@@ -1,0 +1,6 @@
+measure,value
+"explicit negatives per positive, pooled",23.508342982462867
+"negatives per positive, median impression",16.2
+"negatives per positive, p25 / p75 impression",6.5 / 34.0
+impressions with fewer than 4 explicit negatives (%),14.119667937412894
+impressions with zero explicit negatives (%),0.0

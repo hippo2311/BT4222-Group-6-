@@ -1,0 +1,10 @@
+level,stage,count,share_of_previous_stage_pct
+candidate pair,exposures (article shown to a user in a slate),70314387,
+candidate pair,clicks,2868998,4.08024320826405
+impression,impressions logged,1897835,
+impression,impressions with at least one click,1897835,100.0
+article,articles in the training news file,98671,
+article,articles shown in at least one slate,24641,24.9728897041684
+article,articles clicked at least once,15292,62.059169676555335
+user,users with at least one impression,667880,
+user,users with at least one click,667880,100.0

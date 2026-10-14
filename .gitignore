@@ -1,0 +1,16 @@
+# raw and split data (hundreds of MB to GB): keep them next to the notebooks locally, never in git
+MIND/
+MIND_Validation/
+train/
+validation/
+test/
+*.tsv
+*.vec
+
+# derived data written by 1_Data_Preparation/clean_and_validate_data.ipynb (456 MB, regenerate in ~1 min)
+1_Data_Preparation/processed/
+
+# notebook and OS clutter
+.ipynb_checkpoints/
+__pycache__/
+.DS_Store

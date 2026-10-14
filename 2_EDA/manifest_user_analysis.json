@@ -1,0 +1,290 @@
+{
+  "notebook": "user_analysis",
+  "run_stamp": "2026-10-14 08:04 UTC",
+  "split": "train",
+  "polars": "1.44.2",
+  "tables": [
+    "usr_01_active_days.csv",
+    "usr_01_history_length_bins.csv",
+    "usr_01_impressions_per_user_bins.csv",
+    "usr_01_user_level_summary.csv",
+    "usr_02_new_users_validation_test.csv",
+    "usr_02_no_history_users.csv",
+    "usr_03_history_augmentation_potential.csv",
+    "usr_04_history_vs_window_category_mix.csv",
+    "usr_05_ctr_by_affinity.csv",
+    "usr_05_ctr_by_affinity_top_categories.csv",
+    "usr_06_novelty.csv",
+    "usr_07_short_vs_long_term_by_gap.csv"
+  ],
+  "figures": [
+    "usr_01_activity_history.png",
+    "usr_02_cold_start_users.png",
+    "usr_04_history_category_mix.png",
+    "usr_05_affinity.png",
+    "usr_06_novelty.png",
+    "usr_07_short_vs_long_term.png"
+  ],
+  "headline": {
+    "n_impressions": 1897835,
+    "n_users": 667880,
+    "n_exposures": 70314387,
+    "n_clicks": 2868998,
+    "users_one_impression_pct": 36.581571539797565,
+    "users_multi_day_pct": 54.45798646463436,
+    "median_impressions_per_user": 2.0,
+    "median_history": 11.0,
+    "p95_history": 64.0,
+    "history_over_50_pct": 7.935707013235911,
+    "empty_history_users_pct": 1.7721746421512845,
+    "no_history": {
+      "has history": {
+        "impressions": 1860714,
+        "users": 656044,
+        "exposures": 68943483,
+        "clicks": 2812815,
+        "mean_slate_len": 37.0522,
+        "clicks_per_impression": 1.5117,
+        "ctr_pct": 4.0799,
+        "impression_pct": 98.044
+      },
+      "no history": {
+        "impressions": 37121,
+        "users": 11836,
+        "exposures": 1370904,
+        "clicks": 56183,
+        "mean_slate_len": 36.9307,
+        "clicks_per_impression": 1.5135,
+        "ctr_pct": 4.0982,
+        "impression_pct": 1.956
+      }
+    },
+    "new_users": [
+      {
+        "new_user": "seen in train",
+        "impressions": 312424,
+        "users": 205303,
+        "exposures": 11779081,
+        "clicks": 485534,
+        "no_history_pct": 2.61,
+        "median_history": 23.0,
+        "split": "test",
+        "ctr_pct": 4.122,
+        "clicks_per_impression": 1.554,
+        "user_share_pct": 80.2,
+        "impression_share_pct": 82.988
+      },
+      {
+        "new_user": "new vs train",
+        "impressions": 64047,
+        "users": 50687,
+        "exposures": 2306476,
+        "clicks": 89311,
+        "no_history_pct": 4.865,
+        "median_history": 7.0,
+        "split": "test",
+        "ctr_pct": 3.872,
+        "clicks_per_impression": 1.394,
+        "user_share_pct": 19.8,
+        "impression_share_pct": 17.012
+      },
+      {
+        "new_user": "seen in train",
+        "impressions": 282210,
+        "users": 192621,
+        "exposures": 11167805,
+        "clicks": 440497,
+        "no_history_pct": 2.601,
+        "median_history": 23.0,
+        "split": "validation",
+        "ctr_pct": 3.944,
+        "clicks_per_impression": 1.561,
+        "user_share_pct": 81.632,
+        "impression_share_pct": 84.264
+      },
+      {
+        "new_user": "new vs train",
+        "impressions": 52703,
+        "users": 43342,
+        "exposures": 2025182,
+        "clicks": 74161,
+        "no_history_pct": 3.045,
+        "median_history": 8.0,
+        "split": "validation",
+        "ctr_pct": 3.662,
+        "clicks_per_impression": 1.407,
+        "user_share_pct": 18.368,
+        "impression_share_pct": 15.736
+      }
+    ],
+    "history_augmentation": [
+      {
+        "split": "validation",
+        "users": 235963,
+        "users_with_in_window_clicks": 192621,
+        "users_with_in_window_clicks_pct": 81.632,
+        "median_added_clicks_when_any": 4.0,
+        "mean_added_clicks_when_any": 6.304,
+        "total_added_clicks": 1214275,
+        "total_supplied_history": 6244894,
+        "added_as_pct_of_supplied_history": 19.444,
+        "users_with_no_history_but_in_window_clicks": 4795
+      },
+      {
+        "split": "test",
+        "users": 255990,
+        "users_with_in_window_clicks": 216778,
+        "users_with_in_window_clicks_pct": 84.682,
+        "median_added_clicks_when_any": 4.0,
+        "mean_added_clicks_when_any": 6.969,
+        "total_added_clicks": 1510726,
+        "total_supplied_history": 6560336,
+        "added_as_pct_of_supplied_history": 23.028,
+        "users_with_no_history_but_in_window_clicks": 5788
+      }
+    ],
+    "train_impressions_with_prior_window_clicks_pct": 64.80832106057693,
+    "history_entries_once_per_user": 12874380,
+    "history_distinct_articles": 79056,
+    "history_articles_also_shown": 5026,
+    "history_entries_on_shown_articles_pct": 21.901326510480505,
+    "median_history_categories": 5.0,
+    "aff_ctr_zero": 2.890147592531948,
+    "aff_ctr_top": 6.206858213746191,
+    "aff_ctr_zero_fixed": 1.7542441684250005,
+    "aff_ctr_top_fixed": 4.3805698189236475,
+    "novelty": [
+      {
+        "group": "cold user (no history)",
+        "exposures": 1370904,
+        "clicks": 56183,
+        "ctr_pct": 4.098,
+        "slates": "all",
+        "exposure_share_pct": 1.95
+      },
+      {
+        "group": "unseen category",
+        "exposures": 19406028,
+        "clicks": 544301,
+        "ctr_pct": 2.805,
+        "slates": "all",
+        "exposure_share_pct": 27.599
+      },
+      {
+        "group": "seen category",
+        "exposures": 49537455,
+        "clicks": 2268514,
+        "ctr_pct": 4.579,
+        "slates": "all",
+        "exposure_share_pct": 9.369
+      },
+      {
+        "group": "cold user (no history)",
+        "exposures": 459026,
+        "clicks": 13078,
+        "ctr_pct": 2.849,
+        "slates": "length 50-100",
+        "exposure_share_pct": 1.923
+      },
+      {
+        "group": "unseen category",
+        "exposures": 6420119,
+        "clicks": 107599,
+        "ctr_pct": 1.676,
+        "slates": "length 50-100",
+        "exposure_share_pct": 26.894
+      },
+      {
+        "group": "seen category",
+        "exposures": 16993207,
+        "clicks": 553593,
+        "ctr_pct": 3.258,
+        "slates": "length 50-100",
+        "exposure_share_pct": 71.184
+      }
+    ],
+    "short_long_term": {
+      "users": 260920,
+      "sessions": 1067316,
+      "raw": [
+        {
+          "gap_group": "<1 hour",
+          "sessions": 184095,
+          "prev_hit": 0.2687,
+          "top_hist": 0.3063,
+          "top_lt": 0.4169,
+          "view": "raw"
+        },
+        {
+          "gap_group": "1-6 hours",
+          "sessions": 288538,
+          "prev_hit": 0.2785,
+          "top_hist": 0.306,
+          "top_lt": 0.4066,
+          "view": "raw"
+        },
+        {
+          "gap_group": "6-24 hours",
+          "sessions": 366253,
+          "prev_hit": 0.2874,
+          "top_hist": 0.343,
+          "top_lt": 0.4514,
+          "view": "raw"
+        },
+        {
+          "gap_group": "1-3 days",
+          "sessions": 216778,
+          "prev_hit": 0.2829,
+          "top_hist": 0.3261,
+          "top_lt": 0.4649,
+          "view": "raw"
+        },
+        {
+          "gap_group": ">3 days",
+          "sessions": 11652,
+          "prev_hit": 0.2651,
+          "top_hist": 0.3121,
+          "top_lt": 0.4781,
+          "view": "raw"
+        }
+      ],
+      "demeaned": [
+        {
+          "gap_group": "<1 hour",
+          "prev_hit": -0.001,
+          "top_hist": -0.0068,
+          "top_lt": -0.003,
+          "view": "within-user demeaned"
+        },
+        {
+          "gap_group": "1-6 hours",
+          "prev_hit": 0.0006,
+          "top_hist": -0.0139,
+          "top_lt": -0.015,
+          "view": "within-user demeaned"
+        },
+        {
+          "gap_group": "6-24 hours",
+          "prev_hit": -0.0003,
+          "top_hist": 0.0117,
+          "top_lt": 0.0113,
+          "view": "within-user demeaned"
+        },
+        {
+          "gap_group": "1-3 days",
+          "prev_hit": 0.0011,
+          "top_hist": 0.0046,
+          "top_lt": 0.0038,
+          "view": "within-user demeaned"
+        },
+        {
+          "gap_group": ">3 days",
+          "prev_hit": -0.0103,
+          "top_hist": -0.0041,
+          "top_lt": -0.0059,
+          "view": "within-user demeaned"
+        }
+      ]
+    }
+  }
+}
