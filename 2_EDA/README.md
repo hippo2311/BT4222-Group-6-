@@ -32,6 +32,7 @@ of the three notebooks (each takes 1 to 3 minutes locally; 16 GB RAM is enough).
 | 3 % of shown articles take 80 % of clicks (Gini 0.96); raw CTR unstable below 100 exposures | art §2 | prior exposures / clicks / smoothed CTR, never whole-window CTR |
 | Category CTR spread (2.6–6.1 %) survives exposure control | art §3 | `category` feature, compact encoding |
 | CTR decays with age (5.9 % → 2.5 % after two days); 1,000+ prior clicks → 6.2 % CTR | art §4 | `article_age_hours` + censoring flag; hourly time-causal popularity, modelled jointly with age |
+| Observed lifespan (first to last exposure) runs from 4 h (video) to 28 h (lifestyle) over all shown articles, 6 h to 39 h for articles with ≥ 10 exposures | art §4 | category-specific decay; the past-only half-life estimate and six-hour grace rule live in Bryan's `Interim_2.3b_Bryan` notebook (sections 6i, 6j), not here |
 | 70 % of test-day exposures (76 % of clicks) are on articles unseen in train | art §5 | content-based candidate generation; popularity must update through the test day |
 | Time of day moves volume (×2 weekday vs weekend), not engagement (±0.07 clicks) | art §6 | coarse day-part feature, calibration not ranking |
 | Gap effect small, partly composition | art §7 | recency feature with first-visit flag, low priority |
@@ -41,6 +42,7 @@ of the three notebooks (each takes 1 to 3 minutes locally; 16 GB RAM is enough).
 * One visual system: categorical colours in fixed order (blue, orange, aqua, yellow), one y-axis per panel, percent axes,
   legends for every multi-series panel plus direct labels where they help.
 * Numbers quoted in the report come from the manifests, not from re-typing; re-run the notebook rather than editing a figure.
+* Lifespan statistics use every shown article, the definition of the interim report (section 3.7.5); the ≥ 10-exposure cohort is reported alongside because single-exposure articles have a zero span.
 * Data vocabulary: *impression* = one slate shown to one user (one row of behaviors.tsv); *exposure* = one (impression, candidate)
   pair; *slate length* = tokens in the impression string; *position* = the shuffled order of those tokens; *history* = the user's
   pre-window clicks, identical across all of the user's impressions and across splits.

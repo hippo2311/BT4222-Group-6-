@@ -1,6 +1,6 @@
 {
   "notebook": "article_temporal_analysis",
-  "run_stamp": "2026-10-14 08:05 UTC",
+  "run_stamp": "2026-10-14 09:00 UTC",
   "split": "train",
   "polars": "1.44.2",
   "tables": [
@@ -151,19 +151,35 @@
       "48-72h": 2.46,
       ">72h": 2.93
     },
-    "lifespan_median_h": {
+    "lifespan_median_h_all_shown": {
+      "video": 3.8,
+      "sports": 10.1,
+      "news": 12.7,
+      "weather": 13.4,
+      "travel": 14.5,
+      "music": 15.3,
+      "finance": 18.0,
+      "foodanddrink": 22.6,
+      "autos": 28.4,
+      "lifestyle": 28.4,
+      "health": 35.5,
+      "tv": 36.3,
+      "entertainment": 59.7,
+      "movies": 85.8
+    },
+    "lifespan_median_h_10plus": {
       "video": 6.1,
       "sports": 13.3,
-      "music": 15.4,
       "news": 15.5,
       "weather": 16.3,
       "travel": 17.8,
+      "music": 15.4,
       "finance": 23.4,
       "foodanddrink": 26.3,
       "autos": 34.6,
       "lifestyle": 38.5,
-      "tv": 39.6,
       "health": 51.1,
+      "tv": 39.6,
       "entertainment": 76.4,
       "movies": 87.4
     },
@@ -286,13 +302,13 @@
         "ctr_pct": 3.717
       }
     ],
-    "corr_raw_vs_within_user_hourly": 0.9024671424401703,
+    "corr_raw_vs_within_user_hourly": 0.9024671424401701,
     "peak_volume_hour": 6,
     "within_user_max_hour": 4,
     "within_user_min_hour": 15,
     "within_user_dev_range": [
-      -0.06537545686702749,
-      0.04752087884416858
+      -0.06537545686702745,
+      0.047520878844168744
     ],
     "first_impression_pct": 35.191678939423085,
     "gap_quantiles_h": {

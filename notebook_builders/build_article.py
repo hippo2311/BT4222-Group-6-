@@ -211,9 +211,17 @@ fresh = age_tbl[~age_tbl.censored]
 H["censored_exposure_pct"] = float(age_tbl[age_tbl.censored].exposure_pct.sum())
 H["ctr_by_age_uncensored"] = dict(zip(fresh.age_bin.astype(str), fresh.ctr_pct.round(2)))
 # lifespan by category (first to last exposure), shown articles only
-life = (tr.filter(pl.col("exposures_train") >= 10).with_columns(life_h=(pl.col("last_exposure_train") - pl.col("first_exposure_train")).dt.total_seconds() / 3600)
-        .group_by("category").agg(articles=pl.len(), median_h=pl.col("life_h").median(), p25_h=pl.col("life_h").quantile(0.25), p75_h=pl.col("life_h").quantile(0.75)).filter(pl.col("articles") >= 100).sort("median_h"))
-display(save_table("art_04_lifespan_by_category", life)); H["lifespan_median_h"] = dict(zip(life["category"].to_list(), [round(v, 1) for v in life["median_h"].to_list()]))
+# lifespan = first to last recorded exposure. Two cohorts: every shown article (the definition used in the interim report,
+# section 3.7.5) and articles with at least 10 exposures (single-exposure articles have a zero span by construction)
+life_h = (pl.col("last_exposure_train") - pl.col("first_exposure_train")).dt.total_seconds() / 3600
+life_all = (tr.filter(pl.col("exposures_train") > 0).with_columns(life_h=life_h).group_by("category")
+            .agg(articles_shown=pl.len(), median_h=pl.col("life_h").median(), p25_h=pl.col("life_h").quantile(0.25), p75_h=pl.col("life_h").quantile(0.75)))
+life_10 = (tr.filter(pl.col("exposures_train") >= 10).with_columns(life_h=life_h).group_by("category")
+           .agg(articles_10plus=pl.len(), median_h_10plus=pl.col("life_h").median()))
+life = life_all.join(life_10, on="category", how="left").filter(pl.col("articles_shown") >= 100).sort("median_h")
+display(save_table("art_04_lifespan_by_category", life))
+H["lifespan_median_h_all_shown"] = dict(zip(life["category"].to_list(), [round(v, 1) for v in life["median_h"].to_list()]))
+H["lifespan_median_h_10plus"] = dict(zip(life["category"].to_list(), [round(v, 1) for v in life["median_h_10plus"].to_list()]))
 # time-causal popularity: clicks in completed hours before the impression
 hour_idx = ((pl.col("timestamp") - pl.lit(T_START)).dt.total_seconds() // 3600).cast(pl.Int32)
 hourly = (cand.lazy().select("news_code", hour_idx.alias("h"), "clicked").group_by("news_code", "h").agg(c=pl.col("clicked").cast(pl.Int64).sum()).sort("news_code", "h")
@@ -234,7 +242,9 @@ axes[0].set_xticks(x); axes[0].set_xticklabels(AGE_ORDER, rotation=30); axes[0].
 axes[0].legend(fontsize=7.5); axes[0].set_title("CTR decays with article age")
 lp = life.to_pandas()
 axes[1].hlines(range(len(lp)), lp.p25_h, lp.p75_h, color="#9bbde9", lw=4); axes[1].plot(lp.median_h, range(len(lp)), "o", color=BLUE)
-axes[1].set_yticks(range(len(lp))); axes[1].set_yticklabels(lp.category); axes[1].set_xlabel("Observed lifespan, first to last exposure (hours); dot = median, bar = middle 50%"); axes[1].set_title("Lifespan differs by category")
+axes[1].plot(lp.median_h_10plus, range(len(lp)), "D", ms=4, color=ORANGE, label="median, articles with >= 10 exposures")
+axes[1].plot([], [], "o", color=BLUE, label="median, all shown articles (bar = middle 50%)")
+axes[1].set_yticks(range(len(lp))); axes[1].set_yticklabels(lp.category); axes[1].set_xlabel("Observed lifespan, first to last exposure (hours)"); axes[1].legend(loc="lower right", fontsize=7.5); axes[1].set_title("Lifespan differs by category")
 xl = [f"{b}\n({s:.0f}% of exp.)" for b, s in zip(prior.prior_bin.astype(str), prior.exposure_pct)]
 axes[2].bar(range(len(prior)), prior.ctr_pct, color=BLUE)
 for i, v in enumerate(prior.ctr_pct): axes[2].text(i, v + 0.1, f"{v:.1f}%", ha="center", fontsize=8, color=MUTED)
@@ -245,8 +255,9 @@ fig.tight_layout(); save_fig(fig, "art_04_freshness_popularity", "Article age, l
 """)
 c.md(r"""
 **Reading.** For articles first seen after the log opened, CTR falls from 5.9 % in the first hour to about 2.5 % after two days; articles
-already present when the log opened (age unknown, 24 % of exposures) sit at the low end throughout. Lifespans differ by category (video 6 hours,
-lifestyle and tv more than a day and a half). Prior clicks are informative mainly at the head: articles with 1,000 or more clicks before the
+already present when the log opened (age unknown, 24 % of exposures) sit at the low end throughout. Lifespans differ by category: over all shown
+articles the median runs from 4 hours (video) to 28 hours (lifestyle), the definition used in the interim report; restricting to articles with at
+least 10 exposures lengthens every median (video 6 h, lifestyle 39 h) because single-exposure articles have a zero span. Prior clicks are informative mainly at the head: articles with 1,000 or more clicks before the
 impression (a third of exposures) are clicked at 6.2 %, everything below sits near 3 %; the relation is not monotonic because articles with no
 prior click are brand new and benefit from the freshness effect.
 
