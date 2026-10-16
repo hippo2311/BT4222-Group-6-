@@ -14,3 +14,8 @@ cd ../2_EDA && jupyter nbconvert --to notebook --execute --inplace impression_an
 
 `verify_split.py` is the stand-alone script used on 14 Oct 2026 to double-check the split before the notebook existed;
 its checks are now part of the data-preparation notebook.
+
+Stages 3/4 now contain their implementation and settings directly in the notebooks.
+They have no builder, `src/` module dependency or external settings file.
+Builders here apply only to data preparation and EDA and are not needed for normal runs.
+Running a builder overwrites its generated notebooks; edit stages 3/4 directly.

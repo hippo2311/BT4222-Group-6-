@@ -55,3 +55,8 @@ jupyter nbconvert --to notebook --execute --inplace 1_Data_Preparation/clean_and
 
 The second command re-checks the split, writes the typed processed files under `1_Data_Preparation/processed/`
 and the check list `1_Data_Preparation/data_quality_report.csv`.
+
+`python run_all.py` at the repository root handles stages 0–4 without opening individual notebooks.
+It reuses a complete saved split by default, preserving the agreed same-second boundary assignment.
+`--rebuild-splits` explicitly requests regeneration from raw TSV files. Stage 0 writes directly into the
+`train/`, `validation/`, and `test/` folders; it does not download the raw releases.

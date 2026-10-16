@@ -14,3 +14,15 @@ test/
 .ipynb_checkpoints/
 __pycache__/
 .DS_Store
+
+# Reproducible representation/feature data and local Python environment
+.venv/
+.pytest_cache/
+.ruff_cache/
+3_Representations/artifacts/
+4_Feature_Engineering/artifacts/
+results/
+
+# Executed notebook copies and pipeline logs
+runs/
+tests

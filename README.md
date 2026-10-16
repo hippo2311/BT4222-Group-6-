@@ -1,46 +1,60 @@
-# BT4222 Group 6 — Personalised news recommendation on Microsoft MIND
+# BT4222 Group 6 — Personalised News Recommendation
 
-Full-catalogue, two-stage recommender (candidate generation Top-M, re-ranking Top-K) built on MIND-large.
-Interim report: 4 Oct 2026. This repository follows the task plan of the final report.
+A two-stage recommender on MIND-large: retrieve Top-M eligible articles, then re-rank into Top-K.
 
-## Layout
+## Project structure
 
-| Folder | Task | Owner | Status |
-|---|---|---|---|
-| `0_Data_Acquisition/` | 1. data acquisition and temporal split | Member 3 | done |
-| `1_Data_Preparation/` | 2. data cleaning and validation (`clean_and_validate_data.ipynb`, `data_quality_report.csv`) | Member 3 | done |
-| `2_EDA/` | 3. exploratory data analysis (`impression_analysis`, `user_analysis`, `article_temporal_analysis`, `figures/`, `tables/`) | Member 3 | done |
-| `3_Representations/` | 4. article and user representations | | to come |
-| `4_Basic_Models/` | 5. baseline models | | to come |
-| `5_Candidate_Generation/` | 6. candidate generation (Recall@M) | | to come |
-| `6_Feature_Engineering/`, `7_Re_Ranking/` | 7. re-ranking | | to come |
-| `8_Advanced_Features/`, `9_Analysis/` | 8. advanced features and ablation | | to come |
-| `10_End_to_End/` | 9. end-to-end evaluation and documentation | | to come |
-| `notebook_builders/` | scripts that generate the notebooks of tasks 2 and 3 | Member 3 | |
+| Folder | Purpose |
+|---|---|
+| `0_Data_Acquisition/` | Temporal train/validation/test split |
+| `1_Data_Preparation/` | Cleaning, validation and shared processed datasets |
+| `2_EDA/` | Impression, user and article analysis |
+| `3_Representations/` | Text/entity embeddings and user profiles |
+| `4_Feature_Engineering/` | Historical, match, freshness and slate-context features |
+| `5_Basic_Models/` | Baselines — planned |
+| `6_Candidate_Generation/` | Top-M retrieval — planned |
+| `7_Re_Ranking/` | Ranking models — planned |
+| `8_Advanced_Features/`, `9_Analysis/` | Clustering, graph embeddings and ablations — planned |
+| `10_End_to_End/` | Pipeline evaluation — planned |
 
-## Data setup (not in git)
+Representation and feature code/settings are written directly in their notebooks.
 
-Place the agreed split folders at the repository root, exactly as produced by `0_Data_Acquisition/split_process.ipynb`:
+## Setup
 
-```
-train/        behaviors_train.parquet, news_train.parquet, entity_embedding.vec, relation_embedding.vec
-validation/   behaviors_validation.parquet, news_validation.parquet
-test/         behaviors_test.parquet, news_test.parquet, entity_embedding.vec, relation_embedding.vec
-```
+Use Python 3.12:
 
-They are gitignored (about 1 GB). The notebooks also find them on Google Drive under `MyDrive/BT4222` when run in Colab.
-
-## Run order
-
-```
-jupyter nbconvert --to notebook --execute --inplace 1_Data_Preparation/clean_and_validate_data.ipynb   # ~1 min, writes 1_Data_Preparation/processed/
-jupyter nbconvert --to notebook --execute --inplace 2_EDA/impression_analysis.ipynb                     # 1-3 min each
-jupyter nbconvert --to notebook --execute --inplace 2_EDA/user_analysis.ipynb
-jupyter nbconvert --to notebook --execute --inplace 2_EDA/article_temporal_analysis.ipynb
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-`1_Data_Preparation/processed/` (typed impressions, exploded candidates, news catalogue with per-split exposure facts,
-user codes; 456 MB) is the shared input for every later task and is regenerated rather than committed.
-Every number quoted in the report comes from `2_EDA/manifest_*.json` or `2_EDA/tables/`.
+For interactive notebooks, select `.venv/bin/python` as the kernel.
+Place the agreed split Parquet files in `train/`, `validation/`, and `test/`, plus
+`train/entity_embedding.vec`. To create splits instead, provide raw `behaviors.tsv`
+and `news.tsv` in `train/` and `test/` (official dev release). Data is gitignored.
 
-Requirements: Python 3.12, polars >= 1.30, pandas, numpy, pyarrow, scipy, matplotlib, jupyter. 16 GB RAM is enough.
+## Run
+
+Run commands from the repository root with `.venv` activated:
+
+```bash
+python run_all.py                                  # stages 0–4; full features
+python run_all.py --from-stage 0 --to-stage 2       # acquisition through EDA
+python run_all.py --from-stage 2 --to-stage 2       # EDA only
+python run_all.py --from-stage 3 --to-stage 4       # representations + features
+python run_all.py --features-smoke 1000            # smaller feature smoke build
+python run_all.py --notebook 3_Representations/news_embeddings.ipynb
+```
+
+Selected stages require their upstream files. Existing splits are reused; use
+`--rebuild-splits` to regenerate them. In stages 3/4, `REBUILD=False` loads verified saved outputs;
+set `REBUILD=True` in the notebook after changing its calculations/settings.
+`--overwrite-features` also rebuilds the selected feature run.
+Executed notebooks with outputs are saved under `runs/<timestamp>/`; source notebooks stay unchanged.
+
+Saved Parquet/NumPy datasets survive VS Code restarts; rerun only when inputs or calculations change.
+Builders apply to preparation/EDA only; stages 3/4 are edited directly in their notebooks.
+
+Details: [representations](3_Representations/README.md) · [feature engineering](4_Feature_Engineering/README.md).
+Optional developer checks: `python -m pytest -q`. Full-data execution is pending.
