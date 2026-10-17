@@ -2,9 +2,9 @@
 
 Run in order after data preparation:
 
-1. `news_embeddings.ipynb`: training-only TF-IDF/SVD, title/abstract vectors and NRMS title tokens.
-2. `entity_embeddings.ipynb`: canonical training entity lookup, pooled article vectors and coverage.
-3. `user_profiles.ipynb`: article availability, supplied-history profiles and causal profile examples.
+1. `3_01_news_embeddings.ipynb`: training-only TF-IDF/SVD, title/abstract vectors and NRMS title tokens.
+2. `3_02_entity_embeddings.ipynb`: canonical training entity lookup, pooled article vectors and coverage.
+3. `3_03_user_profiles.ipynb`: article availability, supplied-history profiles and causal profile examples.
 
 All code and settings are inside each notebook. Select the project's `.venv` kernel and run top to bottom.
 No local modules, builder or external settings file is needed. `DATA_ROOT` near the top can point to another data folder.

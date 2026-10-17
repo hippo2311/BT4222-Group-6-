@@ -28,10 +28,10 @@ NOTEBOOKS = [
     (2, "2_EDA/impression_analysis.ipynb"),
     (2, "2_EDA/user_analysis.ipynb"),
     (2, "2_EDA/article_temporal_analysis.ipynb"),
-    (3, "3_Representations/news_embeddings.ipynb"),
-    (3, "3_Representations/entity_embeddings.ipynb"),
-    (3, "3_Representations/user_profiles.ipynb"),
-    (4, "4_Feature_Engineering/build_ranking_features.ipynb"),
+    (3, "3_Representations/3_01_news_embeddings.ipynb"),
+    (3, "3_Representations/3_02_entity_embeddings.ipynb"),
+    (3, "3_Representations/3_03_user_profiles.ipynb"),
+    (4, "4_Feature_Engineering/4_01_build_ranking_features.ipynb"),
 ]
 
 
@@ -141,7 +141,7 @@ def preflight(root, steps, present, rebuild_splits):
                 errors.append(f"Missing prepared input: {path}")
     selected = {path for _, path in steps}
     if (
-        "3_Representations/entity_embeddings.ipynb" in selected
+        "3_Representations/3_02_entity_embeddings.ipynb" in selected
         and not (root / "train/entity_embedding.vec").exists()
     ):
         errors.append("Missing train/entity_embedding.vec (canonical entity vectors).")
@@ -149,14 +149,14 @@ def preflight(root, steps, present, rebuild_splits):
         p = root / "3_Representations/artifacts"
         prerequisites = []
         if (
-            "3_Representations/entity_embeddings.ipynb" in selected
-            and "3_Representations/news_embeddings.ipynb" not in selected
+            "3_Representations/3_02_entity_embeddings.ipynb" in selected
+            and "3_Representations/3_01_news_embeddings.ipynb" not in selected
         ):
             prerequisites.append("news_manifest.json")
-        if "3_Representations/user_profiles.ipynb" in selected:
-            if "3_Representations/news_embeddings.ipynb" not in selected:
+        if "3_Representations/3_03_user_profiles.ipynb" in selected:
+            if "3_Representations/3_01_news_embeddings.ipynb" not in selected:
                 prerequisites.append("news_manifest.json")
-            if "3_Representations/entity_embeddings.ipynb" not in selected:
+            if "3_Representations/3_02_entity_embeddings.ipynb" not in selected:
                 prerequisites.append("entity_manifest.json")
         for name in set(prerequisites):
             if not (p / name).exists():

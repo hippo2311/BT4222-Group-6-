@@ -1,6 +1,6 @@
 # 4. Ranking feature engineering
 
-Run `build_ranking_features.ipynb` after the three representation notebooks. All code, historical-state
+Run `4_01_build_ranking_features.ipynb` after the three representation notebooks. All code, historical-state
 classes and settings are defined inside the notebook; it imports no project modules or external settings file.
 
 The notebook defaults to a 1,000-timestamp chronological smoke run. Set `MAX_TIMESTAMPS=None` for a full run.

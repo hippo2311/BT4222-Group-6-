@@ -44,7 +44,7 @@ python run_all.py --from-stage 0 --to-stage 2       # acquisition through EDA
 python run_all.py --from-stage 2 --to-stage 2       # EDA only
 python run_all.py --from-stage 3 --to-stage 4       # representations + features
 python run_all.py --features-smoke 1000            # smaller feature smoke build
-python run_all.py --notebook 3_Representations/news_embeddings.ipynb
+python run_all.py --notebook 3_Representations/3_01_news_embeddings.ipynb
 ```
 
 Selected stages require their upstream files. Existing splits are reused; use
