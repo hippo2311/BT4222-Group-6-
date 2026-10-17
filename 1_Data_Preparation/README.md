@@ -6,6 +6,15 @@ BT4222 Group 6 · final project · task 2. Owner: Member 3 (Anh Minh Hoang).
 and validates every history and impression list, checks the links between behaviour and news records, audits news-field quality
 and entity-embedding coverage, runs the temporal-integrity checks, and writes typed processed files. Run time about 1 minute.
 
+## Start here
+
+`python run_all.py` runs stages 1–4 by default. You can also open this notebook directly.
+The first cells reuse local inputs, or fetch missing split Parquets/entity vectors from the shared Drive,
+then continue cleaning. Completed local inputs work without Drive access; existing files are preserved.
+If Drive has a permissions/quota/missing-file problem, the error points to
+`0_Data_Acquisition/download_split_process.ipynb` (`python run_all.py --from-stage 0 --to-stage 0`).
+That recovery route uses original releases/local ZIPs, independently of Drive.
+
 ## Outputs
 
 | File | Content |

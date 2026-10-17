@@ -6,8 +6,10 @@ Run in order after data preparation:
 2. `3_02_entity_embeddings.ipynb`: canonical training entity lookup, pooled article vectors and coverage.
 3. `3_03_user_profiles.ipynb`: article availability, supplied-history profiles and causal profile examples.
 
-All code and settings are inside each notebook. Select the project's `.venv` kernel and run top to bottom.
-No local modules, builder or external settings file is needed. `DATA_ROOT` near the top can point to another data folder.
+Select the project's `.venv` kernel and run top to bottom. The short notebooks show settings, execution and results;
+shared algorithms/checks live in `src/newsrec/`. Imports run automatically; no builder or separate Python run is needed.
+Defaults are in `src/newsrec/common.py`; override them with `Settings(...)` in a notebook if needed.
+`DATA_ROOT` can point to another folder holding the saved datasets.
 
 `REBUILD=False` loads saved outputs after checking settings, inputs and output hashes. Missing outputs are built.
 Set `REBUILD=True` after changing calculations/settings, then rerun dependent notebooks. Incompatible/stale files
@@ -29,3 +31,6 @@ references for retrieval/rankers. Entity and text spaces remain separate; missin
 
 Coverage and cost reports are written under `results/`. Saved files survive closing VS Code; Python variables do not.
 Later notebooks can load these files with `pd.read_parquet(...)` or `np.load(...)` without rebuilding representations.
+
+Edit representation logic in `src/newsrec/representations.py`, user-state logic in `temporal.py`, and orchestration
+in `pipeline.py`. Restart the kernel after editing imported code, then rebuild affected outputs.

@@ -1,7 +1,8 @@
 # 4. Ranking feature engineering
 
-Run `4_01_build_ranking_features.ipynb` after the three representation notebooks. All code, historical-state
-classes and settings are defined inside the notebook; it imports no project modules or external settings file.
+Run `4_01_build_ranking_features.ipynb` after the three representation notebooks. The notebook controls settings,
+execution and result inspection. It imports feature calculations from `src/newsrec/features.py`, causal state from
+`temporal.py`, and dataset orchestration from `pipeline.py`; do not run those files separately.
 
 The notebook defaults to a 1,000-timestamp chronological smoke run. Set `MAX_TIMESTAMPS=None` for a full run.
 The terminal runner defaults to full features; `--features-smoke 1000` selects the smaller run.
@@ -23,9 +24,12 @@ Outputs under `4_Feature_Engineering/artifacts/<run>/`:
 - `training_negative_groups/` and sampling summary: shared deterministic exposed-negative draws.
 - Feature schema, coverage, quality, cost, manifest and completion status.
 
-The notebook includes `open_feature_run` to validate saved runs and open Arrow datasets without loading everything
+`src/newsrec/io.py` provides `open_feature_run` to validate saved runs and open Arrow datasets without loading everything
 into RAM. Alternatively, read selected Parquet columns with pandas/Polars. All saved outputs survive VS Code restarts.
 The SQLite pair store is temporary build state, removed after success; an interrupted build restarts from the beginning.
 
 Age is not publication age. Half-life uses supported completed windows and validity flags; no hard expiry filter is
 applied. Full MIND runtime/RAM still needs measurement; synthetic tests do not establish recommendation quality.
+
+Default settings live in `src/newsrec/common.py`; notebook `Settings(...)` overrides are optional.
+Restart the kernel after changing shared Python code, then rebuild affected outputs.

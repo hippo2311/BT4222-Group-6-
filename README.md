@@ -6,7 +6,7 @@ A two-stage recommender on MIND-large: retrieve Top-M eligible articles, then re
 
 | Folder | Purpose |
 |---|---|
-| `0_Data_Acquisition/` | Temporal train/validation/test split |
+| `0_Data_Acquisition/` | Original MIND download + splitting (recovery path) |
 | `1_Data_Preparation/` | Cleaning, validation and shared processed datasets |
 | `2_EDA/` | Impression, user and article analysis |
 | `3_Representations/` | Text/entity embeddings and user profiles |
@@ -17,7 +17,7 @@ A two-stage recommender on MIND-large: retrieve Top-M eligible articles, then re
 | `8_Advanced_Features/`, `9_Analysis/` | Clustering, graph embeddings and ablations — planned |
 | `10_End_to_End/` | Pipeline evaluation — planned |
 
-Representation and feature code/settings are written directly in their notebooks.
+Parts 3/4 keep settings and results in notebooks; shared algorithms/checks live in `src/newsrec/`.
 
 ## Setup
 
@@ -30,31 +30,34 @@ python -m pip install -r requirements.txt
 ```
 
 For interactive notebooks, select `.venv/bin/python` as the kernel.
-Place the agreed split Parquet files in `train/`, `validation/`, and `test/`, plus
-`train/entity_embedding.vec`. To create splits instead, provide raw `behaviors.tsv`
-and `news.tsv` in `train/` and `test/` (official dev release). Data is gitignored.
+Start at step 1: it reuses local `train/`, `validation/`, and `test/` inputs or downloads missing
+required files from the team's Drive. If Drive is unavailable, it directs you to step 0 to rebuild
+from original MIND releases. Data stays local and is gitignored.
 
 ## Run
 
 Run commands from the repository root with `.venv` activated:
 
 ```bash
-python run_all.py                                  # stages 0–4; full features
-python run_all.py --from-stage 0 --to-stage 2       # acquisition through EDA
+python run_all.py                                  # normal: stages 1–4, with Drive fallback
+python run_all.py --from-stage 0 --to-stage 0       # recovery: MIND download + split
 python run_all.py --from-stage 2 --to-stage 2       # EDA only
 python run_all.py --from-stage 3 --to-stage 4       # representations + features
 python run_all.py --features-smoke 1000            # smaller feature smoke build
 python run_all.py --notebook 3_Representations/3_01_news_embeddings.ipynb
 ```
 
-Selected stages require their upstream files. Existing splits are reused; use
+Recovery: [download_split_process.ipynb](0_Data_Acquisition/download_split_process.ipynb).
+Stages 2–4 need their upstream outputs; step 1 supplies missing source inputs. Existing splits are reused; use
 `--rebuild-splits` to regenerate them. In stages 3/4, `REBUILD=False` loads verified saved outputs;
 set `REBUILD=True` in the notebook after changing its calculations/settings.
 `--overwrite-features` also rebuilds the selected feature run.
-Executed notebooks with outputs are saved under `runs/<timestamp>/`; source notebooks stay unchanged.
+Outputs update directly in the source notebooks after each completed cell; no timestamped copies are created.
+Save notebook edits before running, and reload the notebook in VS Code afterward if prompted.
+Text output streams to the terminal, with elapsed-time updates every 30 seconds during long cells.
 
 Saved Parquet/NumPy datasets survive VS Code restarts; rerun only when inputs or calculations change.
-Builders apply to preparation/EDA only; stages 3/4 are edited directly in their notebooks.
+Builders apply to preparation/EDA only. Parts 3/4 import shared code automatically; no separate Python run is needed.
 
 Details: [representations](3_Representations/README.md) · [feature engineering](4_Feature_Engineering/README.md).
 Optional developer checks: `python -m pytest -q`. Full-data execution is pending.

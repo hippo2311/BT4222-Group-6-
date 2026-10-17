@@ -23,6 +23,11 @@ __pycache__/
 4_Feature_Engineering/artifacts/
 results/
 
-# Executed notebook copies and pipeline logs
+# Legacy executed copies (new runs update source notebooks in place)
 runs/
 tests
+2_EDA/figures/
+2_EDA/tables/
+# Downloaded original archives and local split-build provenance
+0_Data_Acquisition/downloads/
+0_Data_Acquisition/split_manifest.json

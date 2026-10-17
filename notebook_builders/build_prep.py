@@ -13,7 +13,7 @@ md(r"""
 
 **BT4222 Group 6 · final project · task 2 (data cleaning and validation)**. Owner: Member 3 (Anh Minh Hoang).
 
-This notebook takes the three split folders produced by `0_Data_Acquisition/split_process.ipynb`
+This notebook takes the three split folders produced by `0_Data_Acquisition/download_split_process.ipynb`
 (`train/`, `validation/`, `test/`, each holding `behaviors_<split>.parquet` and `news_<split>.parquet`) and
 
 1. re-derives the **split procedure** from the saved files and checks it (row counts, time windows, boundary ties, id collisions);
@@ -36,42 +36,138 @@ and `1_Data_Preparation/data_quality_report.csv`.
 code(r"""
 from pathlib import Path
 import sys
+import os
+import json
 
 try:
-    import google.colab  # noqa: F401
+    import google.colab
     IN_COLAB = True
 except ImportError:
     IN_COLAB = False
 
-SPLITS = ["train", "validation", "test"]          # folder names, in time order
-SPLIT_CODE = {sp: i for i, sp in enumerate(SPLITS)}
-
-def has_splits(root):
-    return all((root / sp / f"behaviors_{sp}.parquet").is_file() and (root / sp / f"news_{sp}.parquet").is_file()
-               for sp in SPLITS)
+DATA_ROOT = None  # Normally leave this as None: use this project's local folders.
+SPLITS = ['train', 'validation', 'test']
+SPLIT_CODE = {split: i for i, split in enumerate(SPLITS)}
+DRIVE_URL = 'https://drive.google.com/drive/folders/1rkP9G4Bxp1xjhFW1COErvms-CMeNtJUd'
+REQUIRED_INPUTS = tuple(f'{split}/{kind}_{split}.parquet'
+    for split in SPLITS for kind in ('behaviors', 'news')) + (
+        'train/entity_embedding.vec', 'test/entity_embedding.vec')
+RECOVERY_MESSAGE = (
+    'Run step 0 first: 0_Data_Acquisition/download_split_process.ipynb '
+    '(terminal: python run_all.py --from-stage 0 --to-stage 0), '
+    'then rerun step 1. Step 0 uses original MIND releases or locally downloaded ZIPs, not the shared Drive copy.')
 
 if IN_COLAB:
     from google.colab import drive
-    drive.mount("/content/drive")
-    candidate_roots = [Path("/content/drive/MyDrive/BT4222"), Path("/content/drive/MyDrive/MIND"),
-                       Path("/content/drive/MyDrive"), Path("/content")]
+    drive.mount('/content/drive')
+here = Path.cwd().resolve()
+candidate_roots = [here, *here.parents, Path('/content/drive/MyDrive/BT4222')]
+if DATA_ROOT is not None:
+    ROOT = Path(DATA_ROOT).expanduser().resolve()
+elif os.environ.get('NEWSREC_ROOT'):
+    ROOT = Path(os.environ['NEWSREC_ROOT']).expanduser().resolve()
 else:
-    here = Path.cwd()
-    candidate_roots = [here, here.parent, here.parent.parent, Path.home() / "BT4222"]
+    ROOT = next((p for p in candidate_roots if (p / 'run_all.py').is_file()),
+                next((p for p in candidate_roots if (p / 'train/behaviors_train.parquet').is_file()),
+                     here.parent if here.name == '1_Data_Preparation' else here))
+print('Local input/output root:', ROOT)
 
-ROOT = next((r for r in candidate_roots if has_splits(r)), None)
-if ROOT is None:
-    raise FileNotFoundError("Could not find train/, validation/, test/ with behaviors_<split>.parquet and news_<split>.parquet. "
-                            "Run 0_Data_Acquisition/split_process.ipynb first. Tried: " + ", ".join(map(str, candidate_roots)))
+""")
 
-NB_DIR = ROOT / "1_Data_Preparation"
-PROCESSED = NB_DIR / "processed"
+code(r"""
+def input_ready(path):
+    path = Path(path)
+    if not path.is_file() or path.stat().st_size == 0:
+        return False
+    try:
+        if path.suffix == '.parquet' or '.parquet.part' in path.name:
+            import pyarrow.parquet as pq
+            pq.read_metadata(path)
+        else:
+            with path.open('rb') as stream:
+                first = stream.readline(65536).lower()
+            if b'<html' in first or b'<!doctype' in first:
+                return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def ensure_local_inputs(root, drive_url=DRIVE_URL, required_inputs=REQUIRED_INPUTS):
+    # This function is inline: running this notebook never executes another notebook.
+    root = Path(root).resolve()
+    marker = root / '0_Data_Acquisition/split_manifest.json'
+    if marker.exists():
+        try:
+            building = json.loads(marker.read_text()).get('status') == 'building'
+        except ValueError as exc:
+            raise RuntimeError('The step-0 build marker is unreadable. ' + RECOVERY_MESSAGE) from exc
+        if building:
+            raise RuntimeError('A step-0 split rebuild was interrupted. ' + RECOVERY_MESSAGE)
+    missing = [relative for relative in required_inputs if not input_ready(root / relative)]
+    if not missing:
+        print('All required inputs are local. Google Drive is not contacted.')
+        return {'downloaded': [], 'reused': list(required_inputs)}
+    bad = [relative for relative in missing if (root / relative).exists()]
+    if bad:
+        raise RuntimeError('Local inputs are empty/unreadable: ' + ', '.join(bad) + '. ' + RECOVERY_MESSAGE)
+    print('Missing local inputs; fetching the agreed splits/vectors from Google Drive:', missing)
+    try:
+        import gdown
+        entries = gdown.download_folder(url=drive_url, output=str(root), skip_download=True,
+            quiet=True, use_cookies=False, timeout=30)
+        by_path = {}
+        for entry in entries or []:
+            # Only exact known input filenames are accepted; remote notebook/code files are ignored.
+            relative = str(entry.path).replace('\\', '/')
+            if relative in required_inputs:
+                if relative in by_path:
+                    raise ValueError(f'Duplicate Drive filename: {relative}')
+                by_path[relative] = entry
+        absent = [relative for relative in missing if relative not in by_path]
+        if absent:
+            raise FileNotFoundError('Required files missing from Drive: ' + ', '.join(absent))
+        downloaded = []
+        for relative in missing:
+            target = root / relative
+            if not target.resolve().is_relative_to(root):
+                raise ValueError('Input path escapes the selected data root.')
+            target.parent.mkdir(parents=True, exist_ok=True)
+            staging = target.with_name(target.name + '.part')
+            if staging.exists() and not input_ready(staging):
+                staging.unlink()
+            print('DOWNLOAD', relative, flush=True)
+            result = gdown.download(id=by_path[relative].id, output=str(staging), quiet=False,
+                use_cookies=False, resume=True, retries=3, timeout=30)
+            if result is None or not input_ready(staging):
+                raise RuntimeError(f'Download incomplete: {relative}')
+            if target.exists():
+                raise FileExistsError(f'Destination appeared during download: {target}')
+            staging.replace(target)
+            downloaded.append(relative)
+        remaining = [relative for relative in required_inputs if not input_ready(root / relative)]
+        if remaining:
+            raise FileNotFoundError('Inputs still missing: ' + ', '.join(remaining))
+        print('Required inputs downloaded locally; continuing data preparation.')
+        return {'downloaded': downloaded, 'reused': [p for p in required_inputs if p not in downloaded]}
+    except Exception as exc:
+        # Keep successful earlier downloads; a retry only requests remaining files.
+        raise RuntimeError('Could not obtain the agreed dataset from Google Drive '
+            '(permissions, quota, network, or missing files). Already-local files are kept. '
+            + RECOVERY_MESSAGE) from exc
+
+""")
+
+code(r"""
+input_status = ensure_local_inputs(ROOT)
+NB_DIR = ROOT / '1_Data_Preparation'
+PROCESSED = NB_DIR / 'processed'
 PROCESSED.mkdir(parents=True, exist_ok=True)
-REPORT_PATH = NB_DIR / "data_quality_report.csv"
-print("Environment:", "Google Colab" if IN_COLAB else "local")
-print("Project root:", ROOT)
-print("Processed files ->", PROCESSED)
-print("Quality report  ->", REPORT_PATH)
+REPORT_PATH = NB_DIR / 'data_quality_report.csv'
+print('Environment:', 'Google Colab' if IN_COLAB else 'local')
+print('Processed files ->', PROCESSED)
+print('Quality report ->', REPORT_PATH)
+
 """)
 
 code(r"""
@@ -124,7 +220,7 @@ print("Setup ok ·", RUN_STAMP, "· polars", pl.__version__, "· pandas", pd.__v
 md(r"""
 ## 1. Inputs and the split procedure
 
-`split_process.ipynb` (27 Sep 2026) reads the MIND-large **train** release (`behaviors.tsv`, 2,232,748 impressions, 9 to 14 Nov 2019),
+`download_split_process.ipynb` reads the MIND-large **train** release (`behaviors.tsv`, 2,232,748 impressions, 9 to 14 Nov 2019),
 parses the timestamps, sorts by time and cuts at row `int(0.85 × rows)`: the first 85 % become `train`, the rest `validation`.
 The MIND-large **dev** release (15 Nov 2019, labelled) is kept whole as `test`. The news files for train and validation are the
 rows of `news.tsv` referenced by that split's histories or slates; the test news file is the dev release's own `news.tsv`.
@@ -183,7 +279,7 @@ check("split", "train+validation impressions all between 9 and 14 Nov 2019",
 boundary = B["train"]["timestamp"].max()
 ties_tr = int((B["train"]["timestamp"] == boundary).sum()); ties_va = int((B["validation"]["timestamp"] == boundary).sum())
 check("split", f"rows at the boundary second {boundary}: train / validation", f"{ties_tr} / {ties_va}", status="INFO",
-      detail="polars sort() is not stable by default, so a re-run of split_process.ipynb may assign these few same-second rows "
+      detail="the saved team split used the original timestamp sort; a stable rebuild in download_split_process.ipynb may assign boundary rows "
              "differently; the saved parquet files are the reference. No leakage: both sides share one timestamp.")
 # a stable time sort of the saved files reproduces the saved assignment exactly
 tv = pl.concat([B["train"].select("session_id", "timestamp").with_columns(split=pl.lit("train")),
