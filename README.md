@@ -17,7 +17,7 @@ A two-stage recommender on MIND-large: retrieve Top-M eligible articles, then re
 | `8_Advanced_Features/`, `9_Analysis/` | Clustering, graph embeddings and ablations — planned |
 | `10_End_to_End/` | Pipeline evaluation — planned |
 
-Parts 3/4 keep settings and results in notebooks; shared algorithms/checks live in `src/newsrec/`.
+Parts 3/4 show their core calculations in notebook cells; shared checks, cache handling and storage live in `src/newsrec/`.
 
 ## Setup
 

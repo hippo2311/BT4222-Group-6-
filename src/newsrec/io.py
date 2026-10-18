@@ -65,7 +65,13 @@ def reconstruct_profile(reference, bundle):
 
 
 def feature_run(
-    root, cfg=DEFAULT_SETTINGS, *, target_split=None, max_timestamps=None, rebuild=False
+    root,
+    cfg=DEFAULT_SETTINGS,
+    *,
+    target_split=None,
+    max_timestamps=None,
+    rebuild=False,
+    **build_options,
 ):
     """Load a verified compatible run, or build it with the same dataset contract."""
     from .pipeline import build_ranking_dataset
@@ -88,6 +94,7 @@ def feature_run(
         target_split=target_split,
         max_timestamps=max_timestamps,
         overwrite=rebuild,
+        **build_options,
     )
 
 

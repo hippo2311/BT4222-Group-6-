@@ -2,7 +2,7 @@
 
 Prepared for Bryan's contribution to BT4222 Group 6, 16 October 2026.
 
-Implementation update: stages 3/4 are short notebooks with visible settings and results, backed by shared implementations in `src/newsrec/`. The original artifact/temporal contracts below still apply; no external JSON settings file is required.
+Implementation update: stages 3/4 contain visible, executable core method cells and pass those functions to shared validation/cache/storage helpers in `src/newsrec/`. The original artifact/temporal contracts below still apply; no external JSON settings file is required.
 
 ## 1. Purpose and scope
 
@@ -189,7 +189,7 @@ Persist immutable supplied profiles, compact history/state references and replay
 
 ## 7. `4_01_build_ranking_features.ipynb`: shared feature layer
 
-Keep notebooks focused on settings, execution and result inspection. Define shared representation, temporal-state, feature and validation logic in `src/newsrec/` and import it from the notebooks. Notebooks exchange saved data artifacts; the shared implementation prevents repeated definitions from drifting.
+Keep core representation, temporal-state and feature calculations in notebook cells for review. Pass those functions/classes explicitly to shared validation, cache and storage helpers in `src/newsrec/`; the visible code must drive actual builds. Notebooks exchange saved data artifacts. The causal state is repeated in the profile and ranking notebooks so each can be read independently.
 
 ### 7.1 Feature dictionary and priority
 

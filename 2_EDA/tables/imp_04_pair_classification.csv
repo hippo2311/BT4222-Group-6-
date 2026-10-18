@@ -1,5 +1,0 @@
-"(user, article) pair",count,meaning,role in the model
-shown in a slate and clicked,2868998,"positive, y = 1",target
-"shown in a slate, not clicked",67445389,"explicit negative, y = 0",target
-in the user's supplied history,12874380,past positive (clicked before the log window),"input only, via the user profile"
-neither shown nor in history,65817198713,"unobserved: label unknown, not zero",none (never a negative)

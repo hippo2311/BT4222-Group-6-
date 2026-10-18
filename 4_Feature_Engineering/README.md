@@ -1,8 +1,9 @@
 # 4. Ranking feature engineering
 
-Run `4_01_build_ranking_features.ipynb` after the three representation notebooks. The notebook controls settings,
-execution and result inspection. It imports feature calculations from `src/newsrec/features.py`, causal state from
-`temporal.py`, and dataset orchestration from `pipeline.py`; do not run those files separately.
+Run `4_01_build_ranking_features.ipynb` after the three representation notebooks. Core calculations live in its cells:
+causal profiles, past-only half-life, ranking-feature formulas and deterministic negative sampling. Build calls pass
+these visible functions to shared storage/replay helpers. Generic key/eligibility/cache checks stay in `src/newsrec/`.
+Edit method cells and rebuild affected outputs; do not run the Python helper files separately.
 
 The notebook defaults to a 1,000-timestamp chronological smoke run. Set `MAX_TIMESTAMPS=None` for a full run.
 The terminal runner defaults to full features; `--features-smoke 1000` selects the smaller run.

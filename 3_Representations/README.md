@@ -6,8 +6,10 @@ Run in order after data preparation:
 2. `3_02_entity_embeddings.ipynb`: canonical training entity lookup, pooled article vectors and coverage.
 3. `3_03_user_profiles.ipynb`: article availability, supplied-history profiles and causal profile examples.
 
-Select the project's `.venv` kernel and run top to bottom. The short notebooks show settings, execution and results;
-shared algorithms/checks live in `src/newsrec/`. Imports run automatically; no builder or separate Python run is needed.
+Select the project's `.venv` kernel and run top to bottom. Core methods are actual notebook code: training-only
+TF-IDF/SVD and vocabularies, entity pooling, article discovery, supplied-history pooling and causal profile updates.
+Build calls pass these notebook functions to shared file/cache/audit helpers in `src/newsrec/`.
+No builder or separate Python run is needed.
 Defaults are in `src/newsrec/common.py`; override them with `Settings(...)` in a notebook if needed.
 `DATA_ROOT` can point to another folder holding the saved datasets.
 
@@ -32,5 +34,7 @@ references for retrieval/rankers. Entity and text spaces remain separate; missin
 Coverage and cost reports are written under `results/`. Saved files survive closing VS Code; Python variables do not.
 Later notebooks can load these files with `pd.read_parquet(...)` or `np.load(...)` without rebuilding representations.
 
-Edit representation logic in `src/newsrec/representations.py`, user-state logic in `temporal.py`, and orchestration
-in `pipeline.py`. Restart the kernel after editing imported code, then rebuild affected outputs.
+Edit the method cells to change calculations, then set `REBUILD=True` and rerun affected/downstream notebooks.
+The module defaults remain available to later Python consumers; notebook builds explicitly use their visible methods.
+The causal profile methods are repeated in `3_03` and `4_01`; keep both copies consistent when changing that method.
+Restart the kernel after editing imported helpers.

@@ -171,7 +171,18 @@ def time_horizon(root, splits=SPLITS):
     return (min(x[0] for x in ranges), max(x[1] for x in ranges))
 
 
-def build_supplied_profiles(root, cfg=DEFAULT_SETTINGS):
+def pool_supplied_history(history, bundle):
+    raw = "" if pd.isna(history) else str(history)
+    codes = [int(x.removeprefix("N")) for x in raw.split()]
+    rows = bundle.rows(codes)
+    text, valid_text = normalised_mean(bundle.text, rows)
+    entity, valid_entity = normalised_mean(bundle.entity, rows)
+    return rows, text, entity, valid_text, valid_entity
+
+
+def build_supplied_profiles(
+    root, cfg=DEFAULT_SETTINGS, *, history_pooler=pool_supplied_history
+):
     """Supplied-only matrix for baseline/cluster handoff; no in-window feedback."""
     processed = require_inputs(root)
     out = artifact_dir(root)
@@ -223,11 +234,12 @@ def build_supplied_profiles(root, cfg=DEFAULT_SETTINGS):
                             raise ValueError(f"Supplied history changed: {u}")
                         continue
                     seen[u] = raw
-                    codes = [int(x.removeprefix("N")) for x in raw.split()]
-                    rows = bundle.rows(codes)
+                    rows, text_vector, entity_vector, vt, ve = history_pooler(
+                        raw, bundle
+                    )
                     i = user_rows[u]
-                    text[i], vt = normalised_mean(bundle.text, rows)
-                    entity[i], ve = normalised_mean(bundle.entity, rows)
+                    text[i] = text_vector
+                    entity[i] = entity_vector
                     quality.append(
                         {
                             "user_code": u,
@@ -342,6 +354,9 @@ def build_ranking_dataset(
     target_split=None,
     max_timestamps=None,
     overwrite=False,
+    state_factory=TemporalState,
+    feature_builder=build_features,
+    negative_sampler=sample_training_groups,
 ):
     """Replay complete historical logs; sample only the written training examples.
 
@@ -439,7 +454,7 @@ def build_ranking_dataset(
             ]
         ),
     )
-    state = TemporalState(
+    state = state_factory(
         bundle, *time_horizon(root, splits), cfg, pair_path=out / "pair_history.sqlite"
     )
     written = 0
@@ -455,7 +470,7 @@ def build_ranking_dataset(
                     ev = events[events.split.eq(split)]
                     if not len(req):
                         continue
-                    f = build_features(req, ev, state, bundle, cfg, "logged")
+                    f = feature_builder(req, ev, state, bundle, cfg, "logged")
                     generated[split] += len(f)
                     clicked = (
                         ev.set_index(["impression_uid", "news_code"])
@@ -515,7 +530,7 @@ def build_ranking_dataset(
                         old["max"] = max(old["max"], float(maximum[j]))
                     ref_writers[split].add(_profile_references(req, state, t))
                     if split == "train":
-                        groups, selected = sample_training_groups(ev, cfg)
+                        groups, selected = negative_sampler(ev, cfg)
                         group_writer.add(groups)
                         keep = np.array(
                             [
@@ -685,12 +700,19 @@ def build_ranking_dataset(
     return out
 
 
-def profile_preview(root, cfg=DEFAULT_SETTINGS, timestamp_batches=3, users_per_batch=2):
+def profile_preview(
+    root,
+    cfg=DEFAULT_SETTINGS,
+    timestamp_batches=3,
+    users_per_batch=2,
+    *,
+    state_factory=TemporalState,
+):
     """Small chronological profile preview without persisting or changing artifacts."""
     from itertools import islice
 
     bundle = Bundle(root, cfg)
-    state = TemporalState(bundle, *time_horizon(root), cfg)
+    state = state_factory(bundle, *time_horizon(root), cfg)
     examples = []
     try:
         for t, requests, events in islice(replay_batches(root, cfg), timestamp_batches):
@@ -716,15 +738,21 @@ def profile_preview(root, cfg=DEFAULT_SETTINGS, timestamp_batches=3, users_per_b
     return pd.DataFrame(examples)
 
 
-def verify_feature_parity(root, cfg=DEFAULT_SETTINGS):
+def verify_feature_parity(
+    root,
+    cfg=DEFAULT_SETTINGS,
+    *,
+    state_factory=TemporalState,
+    feature_builder=build_features,
+):
     """Same first-request features for logged pairs and their unlabelled equivalent."""
     bundle = Bundle(root, cfg)
-    state = TemporalState(bundle, *time_horizon(root), cfg)
+    state = state_factory(bundle, *time_horizon(root), cfg)
     try:
         t, requests, logged = next(replay_batches(root, cfg))
         state.begin(requests, t)
-        a = build_features(requests, logged, state, bundle, cfg, "logged")
-        b = build_features(
+        a = feature_builder(requests, logged, state, bundle, cfg, "logged")
+        b = feature_builder(
             requests,
             logged[["impression_uid", "news_code"]],
             state,

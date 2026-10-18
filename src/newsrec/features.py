@@ -155,22 +155,9 @@ def feature_schema(cfg=DEFAULT_SETTINGS):
     }
 
 
-def build_features(
-    requests,
-    candidate_pairs,
-    state_before_t,
-    representation_bundle,
-    feature_settings=DEFAULT_SETTINGS,
-    candidate_source="retrieved",
+def prepare_feature_pairs(
+    requests, candidate_pairs, state, bundle, cfg, candidate_source
 ):
-    """Same input contract for logged or unlabelled retrieved candidates.
-
-    Caller begins one complete timestamp, builds all feature requests, then calls
-    finish with logged feedback. This function neither reads labels nor mutates state.
-    """
-    state = state_before_t
-    bundle = representation_bundle
-    cfg = feature_settings
     if state.cfg.fingerprint() != cfg.fingerprint():
         raise ValueError("State and feature configuration differ")
     if candidate_source not in ("logged", "retrieved"):
@@ -199,6 +186,28 @@ def build_features(
     eligible = bundle.eligible(pairs.news_code, t)
     if not eligible.all():
         raise ValueError("Candidate catalogue contains future/unavailable articles")
+    return pairs, rows, t
+
+
+def build_features(
+    requests,
+    candidate_pairs,
+    state_before_t,
+    representation_bundle,
+    feature_settings=DEFAULT_SETTINGS,
+    candidate_source="retrieved",
+):
+    """Same input contract for logged or unlabelled retrieved candidates.
+
+    Caller begins one complete timestamp, builds all feature requests, then calls
+    finish with logged feedback. This function neither reads labels nor mutates state.
+    """
+    state = state_before_t
+    bundle = representation_bundle
+    cfg = feature_settings
+    pairs, rows, t = prepare_feature_pairs(
+        requests, candidate_pairs, state, bundle, cfg, candidate_source
+    )
     prior_pairs = state.pairs.lookup(pairs.user_code, rows)
     unique_rows, inverse = np.unique(rows, return_inverse=True)
     unique_half = state.half_life(unique_rows, t)

@@ -83,7 +83,81 @@ def audit_metadata_conflicts(root):
     }
 
 
-def build_news(root, cfg=DEFAULT_SETTINGS):
+def fit_text_space(news, cfg=DEFAULT_SETTINGS):
+    """Fit vocabulary/IDF and SVD on training titles; freeze for every transform."""
+    titles = news.title.map(clean_text)
+    abstracts = news.abstract.map(clean_text)
+    train = news.in_news_train.fillna(False).to_numpy(dtype=bool)
+    if train.sum() < 2:
+        raise ValueError("At least two training articles are required")
+    tfidf = TfidfVectorizer(
+        ngram_range=(1, 2),
+        max_features=cfg.max_features,
+        min_df=cfg.min_df,
+        dtype=np.float32,
+    )
+    train_tfidf = tfidf.fit_transform(titles[train])
+    components = min(cfg.text_dim, train_tfidf.shape[0] - 1, train_tfidf.shape[1] - 1)
+    if components < 1:
+        raise ValueError(
+            "Insufficient training vocabulary for SVD; inspect min_df/text"
+        )
+    svd = TruncatedSVD(n_components=components, random_state=cfg.seed)
+    svd.fit(train_tfidf)
+    matrices = []
+    for texts in (titles, abstracts):
+        reduced = normalise(svd.transform(tfidf.transform(texts)))
+        dense = np.zeros((len(titles) + 1, cfg.text_dim), np.float32)
+        dense[1:, :components] = reduced
+        matrices.append(dense)
+    title, abstract = matrices
+    tv = np.linalg.norm(title, axis=1) > 0
+    av = np.linalg.norm(abstract, axis=1) > 0
+    text = normalise(cfg.title_weight * title + (1 - cfg.title_weight) * abstract)
+    text[tv & ~av] = title[tv & ~av]
+    text[av & ~tv] = abstract[av & ~tv]
+    return tfidf, svd, components, title, abstract, text, tv, av
+
+
+def encode_title_tokens(titles, train, cfg=DEFAULT_SETTINGS):
+    tokenise = TfidfVectorizer().build_analyzer()
+    frequency = Counter(token for text_ in titles[train] for token in tokenise(text_))
+    token_vocab = {
+        w: i + 2
+        for i, (w, _) in enumerate(
+            sorted(frequency.items(), key=lambda x: (-x[1], x[0]))[: cfg.max_features]
+        )
+    }
+    token_ids = np.zeros((len(titles) + 1, cfg.title_tokens), np.int32)
+    token_lengths, unknown, total = ([], 0, 0)
+    for i, text_ in enumerate(titles, 1):
+        tokens = tokenise(text_)
+        token_lengths.append(len(tokens))
+        ids = [token_vocab.get(w, 1) for w in tokens]
+        unknown += sum(x == 1 for x in ids)
+        total += len(ids)
+        token_ids[i, : min(len(ids), cfg.title_tokens)] = ids[: cfg.title_tokens]
+    return token_ids, token_vocab, token_lengths, unknown, total
+
+
+def fit_category_encodings(news, train):
+    encodings = {}
+    for col in ("category", "subcategory"):
+        vocabulary = sorted(set(news.loc[train, col].dropna().astype(str)))
+        lookup = {v: i + 1 for i, v in enumerate(vocabulary)}
+        codes = news[col].map(lookup).fillna(0).astype(np.int32)
+        encodings[col] = (codes, lookup)
+    return encodings
+
+
+def build_news(
+    root,
+    cfg=DEFAULT_SETTINGS,
+    *,
+    text_encoder=fit_text_space,
+    token_encoder=encode_title_tokens,
+    category_encoder=fit_category_encodings,
+):
     processed = require_inputs(root)
     out = artifact_dir(root)
     with measure(root, "text"):
@@ -91,42 +165,11 @@ def build_news(root, cfg=DEFAULT_SETTINGS):
         titles = news.title.map(clean_text)
         abstracts = news.abstract.map(clean_text)
         train = news.in_news_train.fillna(False).to_numpy(dtype=bool)
-        if train.sum() < 2:
-            raise ValueError("At least two training articles are required")
-        tfidf = TfidfVectorizer(
-            ngram_range=(1, 2),
-            max_features=cfg.max_features,
-            min_df=cfg.min_df,
-            dtype=np.float32,
-        )
-        train_tfidf = tfidf.fit_transform(titles[train])
-        components = min(
-            cfg.text_dim, train_tfidf.shape[0] - 1, train_tfidf.shape[1] - 1
-        )
-        if components < 1:
-            raise ValueError(
-                "Insufficient training vocabulary for SVD; inspect min_df/text"
-            )
-        svd = TruncatedSVD(n_components=components, random_state=cfg.seed)
-        svd.fit(train_tfidf)
-        matrices = []
-        for texts in (titles, abstracts):
-            reduced = normalise(svd.transform(tfidf.transform(texts)))
-            dense = np.zeros((len(news) + 1, cfg.text_dim), np.float32)
-            dense[1:, :components] = reduced
-            matrices.append(dense)
-        title, abstract = matrices
-        tv = np.linalg.norm(title, axis=1) > 0
-        av = np.linalg.norm(abstract, axis=1) > 0
-        text = normalise(cfg.title_weight * title + (1 - cfg.title_weight) * abstract)
-        text[tv & ~av] = title[tv & ~av]
-        text[av & ~tv] = abstract[av & ~tv]
+        tfidf, svd, components, title, abstract, text, tv, av = text_encoder(news, cfg)
         index = news[STATIC_COLUMNS].copy()
         index.insert(0, "article_row", np.arange(1, len(news) + 1, dtype=np.int32))
-        for col in ("category", "subcategory"):
-            vocabulary = sorted(set(news.loc[train, col].dropna().astype(str)))
-            lookup = {v: i + 1 for i, v in enumerate(vocabulary)}
-            index[f"{col}_code"] = news[col].map(lookup).fillna(0).astype(np.int32)
+        for col, (codes, lookup) in category_encoder(news, train).items():
+            index[f"{col}_code"] = codes
             write_json(out / f"{col}_vocabulary.json", lookup)
         index["has_abstract"] = abstracts.ne("")
         index["title_word_count"] = titles.str.split().str.len().astype(np.int32)
@@ -143,27 +186,9 @@ def build_news(root, cfg=DEFAULT_SETTINGS):
             np.save(out / f"{name}.npy", matrix)
         with (out / "text_transform.pkl").open("wb") as fh:
             pickle.dump({"tfidf": tfidf, "svd": svd}, fh)
-        tokenise = TfidfVectorizer().build_analyzer()
-        frequency = Counter(
-            token for text_ in titles[train] for token in tokenise(text_)
+        token_ids, token_vocab, token_lengths, unknown, total = token_encoder(
+            titles, train, cfg
         )
-        token_vocab = {
-            w: i + 2
-            for i, (w, _) in enumerate(
-                sorted(frequency.items(), key=lambda x: (-x[1], x[0]))[
-                    : cfg.max_features
-                ]
-            )
-        }
-        token_ids = np.zeros((len(news) + 1, cfg.title_tokens), np.int32)
-        token_lengths, unknown, total = ([], 0, 0)
-        for i, text_ in enumerate(titles, 1):
-            tokens = tokenise(text_)
-            token_lengths.append(len(tokens))
-            ids = [token_vocab.get(w, 1) for w in tokens]
-            unknown += sum(x == 1 for x in ids)
-            total += len(ids)
-            token_ids[i, : min(len(ids), cfg.title_tokens)] = ids[: cfg.title_tokens]
         np.save(out / "title_token_ids.npy", token_ids)
         np.save(out / "title_token_mask.npy", token_ids != 0)
         write_json(
@@ -269,7 +294,48 @@ def parse_entities(value):
     return (ids, "present" if data else "empty")
 
 
-def build_entities(root, cfg=DEFAULT_SETTINGS):
+def pool_article_entities(index, lookup, vectors, cfg=DEFAULT_SETTINGS):
+    article = np.zeros((len(index) + 1, cfg.entity_dim), np.float32)
+    links, quality, article_sets = ([], [], [])
+    for row in index.itertuples(index=False):
+        title_ids, ts = parse_entities(row.title_entities)
+        abstract_ids, aps = parse_entities(row.abstract_entities)
+        all_ids = sorted(set(title_ids) | set(abstract_ids))
+        article_sets.append(set(all_ids))
+        matched = [
+            lookup[x]
+            for x in all_ids
+            if x in lookup and np.linalg.norm(vectors[lookup[x]]) > 0
+        ]
+        if matched:
+            article[row.article_row] = normalise(vectors[matched].mean(axis=0))
+        quality.append(
+            {
+                "news_code": row.news_code,
+                "title_entity_status": ts,
+                "abstract_entity_status": aps,
+                "n_title_entities": len(title_ids),
+                "n_abstract_entities": len(abstract_ids),
+                "n_annotated_entities": len(all_ids),
+                "n_valid_entities": len(matched),
+                "entity_coverage": len(matched) / max(1, len(all_ids)),
+                "has_entity_vector": bool(np.linalg.norm(article[row.article_row]) > 0),
+            }
+        )
+        for key in all_ids:
+            links.append(
+                {
+                    "news_code": row.news_code,
+                    "entity_id": key,
+                    "entity_row": lookup.get(key, 0),
+                    "in_title": key in title_ids,
+                    "in_abstract": key in abstract_ids,
+                }
+            )
+    return article, links, quality, article_sets
+
+
+def build_entities(root, cfg=DEFAULT_SETTINGS, *, article_pooler=pool_article_entities):
     require_inputs(root)
     out = artifact_dir(root)
     news_manifest = json.loads((out / "news_manifest.json").read_text())
@@ -287,45 +353,9 @@ def build_entities(root, cfg=DEFAULT_SETTINGS):
         pd.DataFrame(
             {"entity_id": ids, "entity_row": np.arange(1, len(ids) + 1)}
         ).to_parquet(out / "entity_index.parquet", index=False)
-        article = np.zeros((len(index) + 1, cfg.entity_dim), np.float32)
-        links, quality, article_sets = ([], [], [])
-        for row in index.itertuples(index=False):
-            title_ids, ts = parse_entities(row.title_entities)
-            abstract_ids, aps = parse_entities(row.abstract_entities)
-            all_ids = sorted(set(title_ids) | set(abstract_ids))
-            article_sets.append(set(all_ids))
-            matched = [
-                lookup[x]
-                for x in all_ids
-                if x in lookup and np.linalg.norm(vectors[lookup[x]]) > 0
-            ]
-            if matched:
-                article[row.article_row] = normalise(vectors[matched].mean(axis=0))
-            quality.append(
-                {
-                    "news_code": row.news_code,
-                    "title_entity_status": ts,
-                    "abstract_entity_status": aps,
-                    "n_title_entities": len(title_ids),
-                    "n_abstract_entities": len(abstract_ids),
-                    "n_annotated_entities": len(all_ids),
-                    "n_valid_entities": len(matched),
-                    "entity_coverage": len(matched) / max(1, len(all_ids)),
-                    "has_entity_vector": bool(
-                        np.linalg.norm(article[row.article_row]) > 0
-                    ),
-                }
-            )
-            for key in all_ids:
-                links.append(
-                    {
-                        "news_code": row.news_code,
-                        "entity_id": key,
-                        "entity_row": lookup.get(key, 0),
-                        "in_title": key in title_ids,
-                        "in_abstract": key in abstract_ids,
-                    }
-                )
+        article, links, quality, article_sets = article_pooler(
+            index, lookup, vectors, cfg
+        )
         np.save(out / "article_entity100.npy", article)
         pd.DataFrame(quality).to_parquet(out / "entity_quality.parquet", index=False)
         pd.DataFrame(
@@ -413,74 +443,78 @@ def build_entities(root, cfg=DEFAULT_SETTINGS):
     return pd.DataFrame(coverage)
 
 
-def build_availability(root, cfg=DEFAULT_SETTINGS):
+def compute_availability(processed):
+    histories = []
+    exposures = []
+    for split in SPLITS:
+        histories.append(
+            pl.scan_parquet(processed / f"impressions_{split}.parquet").select(
+                "user_code", "timestamp", "history"
+            )
+        )
+        exposures.append(
+            pl.scan_parquet(processed / f"candidates_{split}.parquet").select(
+                "news_code", "timestamp"
+            )
+        )
+    first_hist = (
+        pl.concat(histories)
+        .group_by("user_code", "history")
+        .agg(pl.col("timestamp").min())
+        .filter(pl.col("history").is_not_null() & (pl.col("history") != ""))
+        .with_columns(pl.col("history").str.split(" ").alias("news_id"))
+        .explode("news_id", empty_as_null=True)
+        .with_columns(
+            pl.col("news_id").str.strip_prefix("N").cast(pl.Int32).alias("news_code")
+        )
+        .group_by("news_code")
+        .agg(pl.col("timestamp").min().alias("history_discovered_at"))
+    )
+    first_exp = (
+        pl.concat(exposures)
+        .group_by("news_code")
+        .agg(pl.col("timestamp").min().alias("first_observed_exposure"))
+    )
+    frame = (
+        first_hist.join(first_exp, on="news_code", how="full", coalesce=True)
+        .with_columns(
+            pl.min_horizontal("history_discovered_at", "first_observed_exposure").alias(
+                "available_from"
+            )
+        )
+        .sort("news_code")
+        .collect(engine="streaming")
+        .to_pandas()
+    )
+    frame["discovery_source"] = np.where(
+        frame.history_discovered_at.isna(),
+        "slate",
+        np.where(
+            frame.first_observed_exposure.isna()
+            | (frame.history_discovered_at < frame.first_observed_exposure),
+            "history",
+            "slate_or_tied",
+        ),
+    )
+    start = min(
+        pl.scan_parquet(processed / f"impressions_{s}.parquet")
+        .select(pl.col("timestamp").min())
+        .collect()
+        .item()
+        for s in SPLITS
+    )
+    frame["left_censored"] = frame.first_observed_exposure.eq(start)
+    return frame, start
+
+
+def build_availability(
+    root, cfg=DEFAULT_SETTINGS, *, availability_builder=compute_availability
+):
     """Discovery from earliest observable history/slate, never an invented publication date."""
     processed = require_inputs(root)
     out = artifact_dir(root)
     with measure(root, "availability"):
-        histories = []
-        exposures = []
-        for split in SPLITS:
-            histories.append(
-                pl.scan_parquet(processed / f"impressions_{split}.parquet").select(
-                    "user_code", "timestamp", "history"
-                )
-            )
-            exposures.append(
-                pl.scan_parquet(processed / f"candidates_{split}.parquet").select(
-                    "news_code", "timestamp"
-                )
-            )
-        first_hist = (
-            pl.concat(histories)
-            .group_by("user_code", "history")
-            .agg(pl.col("timestamp").min())
-            .filter(pl.col("history").is_not_null() & (pl.col("history") != ""))
-            .with_columns(pl.col("history").str.split(" ").alias("news_id"))
-            .explode("news_id", empty_as_null=True)
-            .with_columns(
-                pl.col("news_id")
-                .str.strip_prefix("N")
-                .cast(pl.Int32)
-                .alias("news_code")
-            )
-            .group_by("news_code")
-            .agg(pl.col("timestamp").min().alias("history_discovered_at"))
-        )
-        first_exp = (
-            pl.concat(exposures)
-            .group_by("news_code")
-            .agg(pl.col("timestamp").min().alias("first_observed_exposure"))
-        )
-        frame = (
-            first_hist.join(first_exp, on="news_code", how="full", coalesce=True)
-            .with_columns(
-                pl.min_horizontal(
-                    "history_discovered_at", "first_observed_exposure"
-                ).alias("available_from")
-            )
-            .sort("news_code")
-            .collect(engine="streaming")
-            .to_pandas()
-        )
-        frame["discovery_source"] = np.where(
-            frame.history_discovered_at.isna(),
-            "slate",
-            np.where(
-                frame.first_observed_exposure.isna()
-                | (frame.history_discovered_at < frame.first_observed_exposure),
-                "history",
-                "slate_or_tied",
-            ),
-        )
-        start = min(
-            pl.scan_parquet(processed / f"impressions_{s}.parquet")
-            .select(pl.col("timestamp").min())
-            .collect()
-            .item()
-            for s in SPLITS
-        )
-        frame["left_censored"] = frame.first_observed_exposure.eq(start)
+        frame, start = availability_builder(processed)
         frame.to_parquet(out / "article_availability.parquet", index=False)
         if (out / "article_index.parquet").exists() and (
             out / "article_entity100.npy"
