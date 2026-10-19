@@ -25,7 +25,6 @@ results/
 
 # Legacy executed copies (new runs update source notebooks in place)
 runs/
-tests
 2_EDA/figures/
 2_EDA/tables/
 # Downloaded original archives and local split-build provenance

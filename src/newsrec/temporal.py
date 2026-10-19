@@ -83,6 +83,8 @@ class User:
     n_observed: int = 0
     last_impression: pd.Timestamp | None = None
     version: int = 0
+    # One title-vector sum per category, independent of the bounded sequence.
+    interest_sums: dict = field(default_factory=dict)
 
 
 class TemporalState:
@@ -148,6 +150,11 @@ class TemporalState:
             user = User(snapshot, codes, deque(maxlen=self.cfg.history_cap))
             user.categories.update(self.cat[snapshot])
             user.subcategories.update(self.subcat[snapshot])
+            for article in snapshot:
+                category = self.cat[article]
+                if category not in user.interest_sums:
+                    user.interest_sums[category] = np.zeros(self.cfg.text_dim, np.float32)
+                user.interest_sums[category] += self.bundle.title[article]
             self.users[key] = user
 
     def profile(self, user_code, t):
@@ -182,10 +189,11 @@ class TemporalState:
         for cat, _ in sorted(user.categories.items(), key=lambda x: (-x[1], x[0]))[
             : self.cfg.interest_count
         ]:
-            rows = history[self.cat[history] == cat]
-            vector, valid = normalised_mean(self.bundle.title, rows)
-            if valid and np.linalg.norm(vector) > 0:
-                interests.append(vector)
+            # Use all causal clicks, even when their rows leave the sequence cap.
+            vector = user.interest_sums[cat]
+            norm = np.linalg.norm(vector)
+            if norm > 0:
+                interests.append(vector / norm)
                 interest_categories.append(cat)
         padded = np.zeros(self.cfg.history_cap, np.int32)
         padded[: len(history)] = history
@@ -299,6 +307,10 @@ class TemporalState:
                 user.n_observed += 1
                 user.categories[self.cat[a]] += 1
                 user.subcategories[self.subcat[a]] += 1
+                category = self.cat[a]
+                if category not in user.interest_sums:
+                    user.interest_sums[category] = np.zeros(self.cfg.text_dim, np.float32)
+                user.interest_sums[category] += self.bundle.title[a]
                 user.version += 1
         self.profiles.clear()
         self.last_update = t

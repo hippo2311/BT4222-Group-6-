@@ -37,7 +37,7 @@ def open_feature_run(root, run_dir, *, allow_smoke=False, verify_hashes=True):
 
 
 def reconstruct_profile(reference, bundle):
-    """Recover capped causal vectors/interest groups from a stored request reference.
+    """Recover causal vectors and saved full-history interest groups.
 
     Long-term supplied profiles use the separate supplied-profile matrix. No labels
     or future user state are needed for this reconstruction.
@@ -48,13 +48,18 @@ def reconstruct_profile(reference, bundle):
     text, _ = normalised_mean(bundle.text, history)
     entity, _ = normalised_mean(bundle.entity, history)
     recent, _ = normalised_mean(bundle.text, reference["recent_rows"])
-    categories = bundle.meta.category.fillna("<MISSING>").astype(str).to_numpy()
-    interests = []
-    for category in reference["selected_interest_categories"]:
-        rows = history[categories[history] == category]
-        vector, count = normalised_mean(bundle.title, rows)
-        if count and np.linalg.norm(vector) > 0:
-            interests.append(vector)
+    # New references persist centroids because capped rows cannot reconstruct them.
+    if "interest_vectors" in reference:
+        interests = reference["interest_vectors"]
+    else:
+        # Compatibility with references created before full-history centroids.
+        categories = bundle.meta.category.fillna("<MISSING>").astype(str).to_numpy()
+        interests = []
+        for category in reference["selected_interest_categories"]:
+            rows = history[categories[history] == category]
+            vector, count = normalised_mean(bundle.title, rows)
+            if count and np.linalg.norm(vector) > 0:
+                interests.append(vector)
     return {
         "text": text,
         "entity": entity,

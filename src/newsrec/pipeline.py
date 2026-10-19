@@ -222,7 +222,7 @@ def build_supplied_profiles(
             ):
                 for row in (
                     batch.to_pandas()
-                    .drop_duplicates("user_code")
+                    .drop_duplicates(["user_code", "history"])
                     .itertuples(index=False)
                 ):
                     u = int(row.user_code)
@@ -246,7 +246,7 @@ def build_supplied_profiles(
                             "history_length": len(rows),
                             "valid_text_history_count": vt,
                             "valid_entity_history_count": ve,
-                            "history_truncated": len(rows) > cfg.history_cap,
+                            "history_over_cap": len(rows) > cfg.history_cap,
                         }
                     )
         if len(seen) != len(users):
@@ -338,6 +338,7 @@ def _profile_references(requests, state, t):
                 "retained_length": p["retained_length"],
                 "interest_group_count": p["group_count"],
                 "selected_interest_categories": p["selected_interest_categories"],
+                "interest_vectors": p["interests"].tolist(),
                 "recent_rows": p["recent_rows"],
                 "no_supplied_history": p["no_supplied_history"],
                 "has_text": p["has_text"],
@@ -439,6 +440,7 @@ def build_ranking_dataset(
             ("retained_length", pa.int64()),
             ("interest_group_count", pa.int64()),
             ("selected_interest_categories", pa.list_(pa.string())),
+            ("interest_vectors", pa.list_(pa.list_(pa.float32()))),
             ("recent_rows", pa.list_(pa.int32())),
             ("no_supplied_history", pa.bool_()),
             ("has_text", pa.bool_()),

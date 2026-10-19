@@ -217,11 +217,16 @@ def require_inputs(root):
 
 
 def saved_stage_ready(root, settings, stage):
-    """Reuse disk outputs only when settings, inputs and output hashes agree."""
+    """Reuse outputs only when implementation, settings and file hashes agree."""
     path = Path(root) / "3_Representations/artifacts" / f"{stage}_manifest.json"
     if not path.exists():
         return False
     meta = json.loads(path.read_text())
+    # Old artifacts must be rebuilt after a change to the shared algorithms.
+    implementation = meta.get("implementation_hashes", {})
+    for source in Path(__file__).parent.glob("*.py"):
+        if implementation.get(f"src/newsrec/{source.name}") != sha256(source):
+            return False
     key = "config_hash" if stage == "profiles" else "representation_config_hash"
     expected = (
         settings.fingerprint()
