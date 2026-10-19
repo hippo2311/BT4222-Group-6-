@@ -5,6 +5,16 @@ causal profiles, past-only half-life, ranking-feature formulas and deterministic
 these visible functions to shared storage/replay helpers. Generic key/eligibility/cache checks stay in `src/newsrec/`.
 Edit method cells and rebuild affected outputs; do not run the Python helper files separately.
 
+Feature definitions and selection now live entirely in the notebook; `src/newsrec/features.py` has been removed.
+Edit `ENABLED_GROUPS`, `DISABLED_FEATURES`, and `EXTRA_FEATURES` near the top to choose or add model inputs.
+Custom entries contain their explanation and `compute(frame, cfg)` calculation. Selected columns are passed to
+the shared builder and saved schema; an incompatible cached schema is rejected. Set `REBUILD=True` after changing
+selection/calculations. Unselected built-in values may remain in the wide output for diagnostics/ablations.
+
+The notebook introduces the model contract by feature group, then pairs each method with a small executable
+example. Synthetic teaching inputs stay in memory; the later coverage, value, sampling and cost tables use the
+actual saved run. Formula extraction is checked against the existing implementation across replay timestamps.
+
 The notebook defaults to a 1,000-timestamp chronological smoke run. Set `MAX_TIMESTAMPS=None` for a full run.
 The terminal runner defaults to full features; `--features-smoke 1000` selects the smaller run.
 

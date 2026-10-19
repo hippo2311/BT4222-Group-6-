@@ -240,3 +240,54 @@ def saved_stage_ready(root, settings, stage):
                     f"Saved {stage} artifacts are stale or incomplete: {relative}. Set REBUILD=True."
                 )
     return True
+
+
+def prepare_feature_pairs(
+    requests, candidate_pairs, state, bundle, cfg, candidate_source
+):
+    if state.cfg.fingerprint() != cfg.fingerprint():
+        raise ValueError("State and feature configuration differ")
+    if candidate_source not in ("logged", "retrieved"):
+        raise ValueError("candidate_source must be logged or retrieved")
+    if (
+        requests.impression_uid.duplicated().any()
+        or candidate_pairs.duplicated(["impression_uid", "news_code"]).any()
+    ):
+        raise ValueError("Duplicate request or candidate key")
+    if not len(requests) or requests.timestamp.nunique() != 1:
+        raise ValueError("Feature call requires one nonempty timestamp batch")
+    t = pd.Timestamp(requests.timestamp.iloc[0])
+    if state.active_time != t:
+        raise ValueError("Call state.begin for this timestamp first")
+    if not set(candidate_pairs.impression_uid) <= set(requests.impression_uid):
+        raise ValueError("Candidate has no request")
+    if not len(candidate_pairs):
+        raise ValueError("Empty candidate batch")
+    pairs = candidate_pairs[["impression_uid", "news_code"]].merge(
+        requests[["impression_uid", "user_code"]],
+        on="impression_uid",
+        validate="many_to_one",
+        sort=False,
+    )
+    rows = bundle.rows(pairs.news_code)
+    eligible = bundle.eligible(pairs.news_code, t)
+    if not eligible.all():
+        raise ValueError("Candidate catalogue contains future/unavailable articles")
+    return pairs, rows, t
+
+
+def validate_feature_schema(schema):
+    """Check a caller-defined model contract without owning its feature catalogue."""
+    names = schema["model_columns"]
+    if not names or len(set(names)) != len(names):
+        raise ValueError("Select at least one feature; feature names must be unique")
+    protected = (
+        set(schema["keys"]) | set(schema["excluded"]) | set(schema["diagnostics"])
+    )
+    if set(names) & protected:
+        raise ValueError(
+            f"Keys/targets/diagnostics cannot be model features: {sorted(set(names) & protected)}"
+        )
+    if names != [f["name"] for f in schema["features"]]:
+        raise ValueError("Feature definitions and model_columns differ")
+    return schema

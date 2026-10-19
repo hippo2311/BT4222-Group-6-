@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pyarrow.dataset as ds
 
-from .common import DEFAULT_SETTINGS, normalised_mean, sha256
+from .common import DEFAULT_SETTINGS, normalised_mean, sha256, validate_feature_schema
 
 
 def open_feature_run(root, run_dir, *, allow_smoke=False, verify_hashes=True):
@@ -71,11 +71,15 @@ def feature_run(
     target_split=None,
     max_timestamps=None,
     rebuild=False,
+    schema_builder=None,
     **build_options,
 ):
     """Load a verified compatible run, or build it with the same dataset contract."""
     from .pipeline import build_ranking_dataset
 
+    if not callable(schema_builder):
+        raise TypeError("Pass schema_builder=feature_schema from the feature notebook")
+    requested_schema = validate_feature_schema(schema_builder(cfg))
     if max_timestamps is not None and max_timestamps < 1:
         raise ValueError("max_timestamps must be positive or None")
     name = f"{cfg.update_mode}-{target_split or 'all'}"
@@ -86,6 +90,10 @@ def feature_run(
         cached = open_feature_run(root, run_dir, allow_smoke=max_timestamps is not None)
         if cached["manifest"]["config_hash"] != cfg.fingerprint():
             raise ValueError("Saved feature settings differ. Set REBUILD=True.")
+        if cached["schema"] != requested_schema:
+            raise ValueError(
+                "Saved feature selection/definitions differ. Set REBUILD=True to rebuild the selected run."
+            )
         print("Loaded saved feature run:", run_dir)
         return run_dir
     return build_ranking_dataset(
@@ -94,6 +102,7 @@ def feature_run(
         target_split=target_split,
         max_timestamps=max_timestamps,
         overwrite=rebuild,
+        schema_builder=schema_builder,
         **build_options,
     )
 

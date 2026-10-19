@@ -21,9 +21,9 @@ from .common import (
     require_inputs,
     sha256,
     upsert_report,
+    validate_feature_schema,
     write_json,
 )
-from .features import build_features, feature_schema, sample_training_groups
 from .representations import Bundle, artifact_dir
 from .temporal import TemporalState
 
@@ -355,8 +355,9 @@ def build_ranking_dataset(
     max_timestamps=None,
     overwrite=False,
     state_factory=TemporalState,
-    feature_builder=build_features,
-    negative_sampler=sample_training_groups,
+    feature_builder=None,
+    negative_sampler=None,
+    schema_builder=None,
 ):
     """Replay complete historical logs; sample only the written training examples.
 
@@ -364,6 +365,13 @@ def build_ranking_dataset(
     an arbitrary slice without state. Smoke output has a separate run directory.
     Frozen mode requires one target split; earlier splits still update state.
     """
+    if not all(
+        callable(f) for f in (feature_builder, negative_sampler, schema_builder)
+    ):
+        raise ValueError(
+            "Pass feature_builder, negative_sampler and schema_builder from the feature notebook"
+        )
+    active_schema = validate_feature_schema(schema_builder(cfg))
     root = Path(root)
     if max_timestamps is not None and max_timestamps < 1:
         raise ValueError("max_timestamps must be positive or None")
@@ -401,7 +409,7 @@ def build_ranking_dataset(
             )
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    write_json(out / "feature_schema.json", feature_schema(cfg))
+    write_json(out / "feature_schema.json", active_schema)
     write_json(
         out / "run_status.json",
         {"status": "running", "full_run": max_timestamps is None},
@@ -460,7 +468,7 @@ def build_ranking_dataset(
     written = 0
     last_progress = time.perf_counter()
     cutoff = None
-    model_columns = feature_schema(cfg)["model_columns"]
+    model_columns = active_schema["model_columns"]
     try:
         with measure(root, "ranking_features"):
             for t, requests, events in replay_batches(root, cfg, splits):
@@ -743,9 +751,12 @@ def verify_feature_parity(
     cfg=DEFAULT_SETTINGS,
     *,
     state_factory=TemporalState,
-    feature_builder=build_features,
+    feature_builder=None,
+    schema_builder=None,
 ):
     """Same first-request features for logged pairs and their unlabelled equivalent."""
+    if not callable(feature_builder) or not callable(schema_builder):
+        raise TypeError("Pass the notebook feature_builder and schema_builder")
     bundle = Bundle(root, cfg)
     state = state_factory(bundle, *time_horizon(root), cfg)
     try:
@@ -760,7 +771,7 @@ def verify_feature_parity(
             cfg,
             "retrieved",
         )
-        columns = feature_schema(cfg)["model_columns"]
+        columns = validate_feature_schema(schema_builder(cfg))["model_columns"]
         pd.testing.assert_frame_equal(a[columns], b[columns])
     finally:
         state.close()
