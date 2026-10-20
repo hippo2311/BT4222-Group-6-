@@ -215,4 +215,6 @@ Current full manifest SHA-256:
 dc87a817e9c88903c6b7a985dd75e3d55ade379bd18aa9465a692d7a8370f1c0
 ```
 
+**Consistency recheck — 21 October 2026:** all four notebooks validated and compiled; 15 shared-method comparisons passed, all 67 tests passed, and current schema/source/output hashes still match the audited full run. No calculation error or definition mismatch was found. Helper README wording was corrected; calculations and generated datasets were unchanged. Details: `results/notebook_consistency_check.json`.
+
 Model owners should use only `model_columns`, encode `categorical_columns`, join labels on both `impression_uid` and `news_code`, fit preprocessing on training data, and evaluate complete held-out slates. The prequential protocol assumes earlier feedback is promptly available; observation-time age/eligibility, logged exposure bias and sampled-probability calibration remain limitations. Retrieval Recall@M, group ablations, cold-start model quality, clusters/graph embeddings and the connected end-to-end recommender are the next work, not completed results.
