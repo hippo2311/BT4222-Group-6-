@@ -11,8 +11,6 @@ code = lambda s: cells.append(nbf.v4.new_code_cell(s.strip("\n")))
 md(r"""
 # 1. Data cleaning and validation — MIND-large, team split
 
-**BT4222 Group 6 · final project · task 2 (data cleaning and validation)**. Owner: Member 3 (Anh Minh Hoang).
-
 This notebook takes the three split folders produced by `0_Data_Acquisition/download_split_process.ipynb`
 (`train/`, `validation/`, `test/`, each holding `behaviors_<split>.parquet` and `news_<split>.parquet`) and
 
