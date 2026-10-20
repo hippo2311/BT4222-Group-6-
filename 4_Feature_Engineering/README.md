@@ -1,46 +1,23 @@
 # 4. Ranking feature engineering
 
-Run `4_01_build_ranking_features.ipynb` after the three representation notebooks. Core calculations live in its cells:
-causal profiles, past-only half-life, ranking-feature formulas and deterministic negative sampling. Build calls pass
-these visible functions to shared storage/replay helpers. Generic key/eligibility/cache checks stay in `src/newsrec/`.
-Edit method cells and rebuild affected outputs; do not run the Python helper files separately.
+| Notebook | What it does |
+|---|---|
+| [4_01_build_ranking_features.ipynb](4_01_build_ranking_features.ipynb) | Selects model inputs, defines causal profile/feature calculations, replays chronological logged events, samples training negatives, and writes/audits ranking datasets for baselines and re-rankers. |
 
-Feature definitions and selection now live entirely in the notebook; `src/newsrec/features.py` has been removed.
-Edit `ENABLED_GROUPS`, `DISABLED_FEATURES`, and `EXTRA_FEATURES` near the top to choose or add model inputs.
-Custom entries contain their explanation and `compute(frame, cfg)` calculation. Selected columns are passed to
-the shared builder and saved schema; an incompatible cached schema is rejected. Set `REBUILD=True` after changing
-selection/calculations. Unselected built-in values may remain in the wide output for diagnostics/ablations.
+The notebook covers content, history, user–article matching, repeat exposure, popularity, observed freshness, multi-interest, supported half-life and request context. Slate-relative context is optional. Editable `ENABLED_GROUPS`, `DISABLED_FEATURES` and `EXTRA_FEATURES` determine the saved model allowlist.
 
-The notebook introduces the model contract by feature group, then pairs each method with a small executable
-example. Synthetic teaching inputs stay in memory; the later coverage, value, sampling and cost tables use the
-actual saved run. Formula extraction is checked against the existing implementation across replay timestamps.
+Requests at the same timestamp are scored before feedback updates. Pooled vectors use full causal history; sequence inputs are capped. Sampling affects written training examples, while validation/test slates remain complete. Important calculations and worked examples are visible in the notebook; shared helpers handle checks, replay and storage.
 
-The notebook defaults to a 1,000-timestamp chronological smoke run. Set `MAX_TIMESTAMPS=None` for a full run.
-The terminal runner defaults to full features; `--features-smoke 1000` selects the smaller run.
+| Output under `artifacts/<run>/` | Content |
+|---|---|
+| `ranking_features_<split>/` | Partitioned feature tables and diagnostics |
+| `labels_<split>/` | Separate labels keyed by impression and article |
+| `request_profiles_<split>/` | Full history rows, capped sequence rows/masks, recent rows and interest references |
+| `training_negative_groups/` | Reproducible per-positive exposed-negative draws |
+| `feature_schema.json` | Selected `model_columns`, `categorical_columns`, definitions and exclusions |
+| Coverage, quality, sampling and cost reports | Representation fallback, feature ranges, sampling retention and measured resource use |
+| Manifest and run status | Input/output provenance and completion state |
 
-`REBUILD=False` reuses an existing complete, compatible feature run. Set `REBUILD=True` after changing calculations
-or inputs; `--overwrite-features` also rebuilds the selected run. Changed representation dependencies or settings
-cause a validation error instead of silently mixing incompatible data.
+The full prequential run is `artifacts/prequential-all/`; smoke runs use separate folders. Model consumers must use the schema's allowlist, encode category IDs appropriately, and join labels on both keys. `newsrec.io.open_feature_run` validates/opens datasets, and `newsrec.ranking` exposes the notebook methods to Python consumers.
 
-Features include history/category affinity, text/entity matching, previous user/article exposures, smoothed
-popularity, observed age, multi-interest matching and supported half-life. Request context is separately tagged;
-median-relative slate advantage is opt-in. Historical state uses all earlier events, before training-negative sampling.
-Same-second train/validation rows are scored before feedback updates. Logged validation/test slates remain complete.
-
-Outputs under `4_Feature_Engineering/artifacts/<run>/`:
-
-- `ranking_features_<split>/`: partitioned features; use only the schema's model columns.
-- `labels_<split>/`: separate impression/article labels.
-- `request_profiles_<split>/`: history rows, masks and interest/recent references for later models.
-- `training_negative_groups/` and sampling summary: shared deterministic exposed-negative draws.
-- Feature schema, coverage, quality, cost, manifest and completion status.
-
-`src/newsrec/io.py` provides `open_feature_run` to validate saved runs and open Arrow datasets without loading everything
-into RAM. Alternatively, read selected Parquet columns with pandas/Polars. All saved outputs survive VS Code restarts.
-The SQLite pair store is temporary build state, removed after success; an interrupted build restarts from the beginning.
-
-Age is not publication age. Half-life uses supported completed windows and validity flags; no hard expiry filter is
-applied. Full MIND runtime/RAM still needs measurement; synthetic tests do not establish recommendation quality.
-
-Default settings live in `src/newsrec/common.py`; notebook `Settings(...)` overrides are optional.
-Restart the kernel after changing shared Python code, then rebuild affected outputs.
+Execution and rebuild instructions are in the [project README](../README.md). Method comparisons, validation results and the current approach are in [journal.md](../journal.md).

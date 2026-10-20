@@ -1,6 +1,6 @@
 {
   "notebook": "impression_analysis",
-  "run_stamp": "2026-10-17 16:00 UTC",
+  "run_stamp": "2026-10-20 03:57 UTC",
   "split": "train",
   "polars": "1.44.2",
   "tables": [

@@ -35,6 +35,7 @@ class Settings:
     recent_hours: int = 24
     interest_count: int = 3
     ctr_strength: float = 20.0
+    article_ctr_min_exposures: int = 100
     half_life_min_exposures: int = 100
     negative_count: int = 4
     update_mode: str = "prequential"
@@ -54,6 +55,7 @@ class Settings:
             "recent_hours",
             "interest_count",
             "half_life_min_exposures",
+            "article_ctr_min_exposures",
             "negative_count",
             "parquet_batch_rows",
             "output_batch_rows",

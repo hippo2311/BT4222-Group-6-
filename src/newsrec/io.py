@@ -37,7 +37,7 @@ def open_feature_run(root, run_dir, *, allow_smoke=False, verify_hashes=True):
 
 
 def reconstruct_profile(reference, bundle):
-    """Recover causal vectors and saved full-history interest groups.
+    """Recover full pooled vectors and capped sequence inputs from a reference.
 
     Long-term supplied profiles use the separate supplied-profile matrix. No labels
     or future user state are needed for this reconstruction.
@@ -45,18 +45,19 @@ def reconstruct_profile(reference, bundle):
     history = np.asarray(reference["history_rows"], np.int32)
     mask = np.asarray(reference["history_mask"], bool)
     history = history[mask]
-    text, _ = normalised_mean(bundle.text, history)
-    entity, _ = normalised_mean(bundle.entity, history)
+    # v1 references only stored capped rows; preserve their original semantics.
+    full_history = np.asarray(reference.get("full_history_rows", history), np.int32)
+    text, _ = normalised_mean(bundle.text, full_history)
+    entity, _ = normalised_mean(bundle.entity, full_history)
     recent, _ = normalised_mean(bundle.text, reference["recent_rows"])
-    # New references persist centroids because capped rows cannot reconstruct them.
-    if "interest_vectors" in reference:
+    categories = bundle.meta.category.fillna("<MISSING>").astype(str).to_numpy()
+    interests = []
+    if "full_history_rows" not in reference and "interest_vectors" in reference:
+        # Compatibility with the upstream centroid-only reference format.
         interests = reference["interest_vectors"]
     else:
-        # Compatibility with references created before full-history centroids.
-        categories = bundle.meta.category.fillna("<MISSING>").astype(str).to_numpy()
-        interests = []
         for category in reference["selected_interest_categories"]:
-            rows = history[categories[history] == category]
+            rows = full_history[categories[full_history] == category]
             vector, count = normalised_mean(bundle.title, rows)
             if count and np.linalg.norm(vector) > 0:
                 interests.append(vector)
@@ -66,6 +67,7 @@ def reconstruct_profile(reference, bundle):
         "recent_text": recent,
         "interests": np.asarray(interests, np.float32).reshape(-1, bundle.cfg.text_dim),
         "history_rows": history,
+        "full_history_rows": full_history,
     }
 
 

@@ -252,6 +252,11 @@ def main(argv=None):
     parser.add_argument("--from-stage", type=int, choices=range(5), default=1)
     parser.add_argument("--to-stage", type=int, choices=range(5), default=4)
     parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Rebuild saved representations/features in selected stages; does not regenerate splits",
+    )
+    parser.add_argument(
         "--features-smoke",
         type=int,
         metavar="TIMESTAMPS",
@@ -297,6 +302,10 @@ def main(argv=None):
         print("Stage 0: reusing the agreed saved split files (no resplitting).")
     for stage, path in steps:
         print(f"Stage {stage}: {path}")
+    if args.force:
+        print(
+            "Force: rebuilding selected representations/features; saved splits are reused unless --rebuild-splits is given."
+        )
     print(
         "Feature output:",
         "full dataset"
@@ -317,7 +326,10 @@ def main(argv=None):
         "NEWSREC_REBUILD_SPLITS": "1" if args.rebuild_splits else "0",
         "NEWSREC_FULL_FEATURES": "1" if args.features_smoke is None else "0",
         "NEWSREC_SMOKE_TIMESTAMPS": str(args.features_smoke or 1000),
-        "NEWSREC_OVERWRITE_FEATURES": "1" if args.overwrite_features else "0",
+        "NEWSREC_FORCE_REBUILD": "1" if args.force else "0",
+        "NEWSREC_OVERWRITE_FEATURES": "1"
+        if args.overwrite_features or args.force
+        else "0",
     }
     with environment(env):
         for stage, relative in steps:

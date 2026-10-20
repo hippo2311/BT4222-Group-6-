@@ -24,6 +24,7 @@ from .common import (
     validate_feature_schema,
     write_json,
 )
+from .progress import ReplayProgress
 from .representations import Bundle, artifact_dir
 from .temporal import TemporalState
 
@@ -333,12 +334,12 @@ def _profile_references(requests, state, t):
                 "timestamp": t,
                 "state_version": p["state_version"],
                 "history_rows": p["history_rows"].tolist(),
+                "full_history_rows": p["full_history_rows"].tolist(),
                 "history_mask": p["history_mask"].tolist(),
                 "history_length": p["history_length"],
                 "retained_length": p["retained_length"],
                 "interest_group_count": p["group_count"],
                 "selected_interest_categories": p["selected_interest_categories"],
-                "interest_vectors": p["interests"].tolist(),
                 "recent_rows": p["recent_rows"],
                 "no_supplied_history": p["no_supplied_history"],
                 "has_text": p["has_text"],
@@ -346,6 +347,30 @@ def _profile_references(requests, state, t):
             }
         )
     return pd.DataFrame(refs)
+
+
+def replay_workload(processed, splits, max_timestamps=None):
+    """Count replay work for display, without reading candidate labels/history."""
+    timestamps = (
+        pl.concat(
+            [
+                pl.scan_parquet(processed / f"impressions_{s}.parquet").select(
+                    "timestamp"
+                )
+                for s in splits
+            ]
+        )
+        .select(pl.col("timestamp").n_unique())
+        .collect()
+        .item()
+    )
+    if max_timestamps is not None:
+        return min(timestamps, max_timestamps), None
+    events = sum(
+        pq.ParquetFile(processed / f"candidates_{s}.parquet").metadata.num_rows
+        for s in splits
+    )
+    return timestamps, events
 
 
 def build_ranking_dataset(
@@ -399,6 +424,7 @@ def build_ranking_dataset(
     splits = (
         SPLITS if target_split is None else SPLITS[: SPLITS.index(target_split) + 1]
     )
+    total_batches, total_events = replay_workload(processed, splits, max_timestamps)
     name = f"{cfg.update_mode}-{target_split or 'all'}" + (
         f"-smoke-{max_timestamps}" if max_timestamps else ""
     )
@@ -435,12 +461,12 @@ def build_ranking_dataset(
             ("timestamp", pa.timestamp("ns")),
             ("state_version", pa.int64()),
             ("history_rows", pa.list_(pa.int32())),
+            ("full_history_rows", pa.list_(pa.int32())),
             ("history_mask", pa.list_(pa.bool_())),
             ("history_length", pa.int64()),
             ("retained_length", pa.int64()),
             ("interest_group_count", pa.int64()),
             ("selected_interest_categories", pa.list_(pa.string())),
-            ("interest_vectors", pa.list_(pa.list_(pa.float32()))),
             ("recent_rows", pa.list_(pa.int32())),
             ("no_supplied_history", pa.bool_()),
             ("has_text", pa.bool_()),
@@ -468,6 +494,13 @@ def build_ranking_dataset(
         bundle, *time_horizon(root, splits), cfg, pair_path=out / "pair_history.sqlite"
     )
     written = 0
+    replayed_events = 0
+    progress = ReplayProgress(total_batches, total_events)
+    print(
+        f"Replaying {total_batches:,} timestamp batches. ETA adapts to observed speed "
+        "and candidate volume; final checks take additional time.",
+        flush=True,
+    )
     last_progress = time.perf_counter()
     cutoff = None
     model_columns = active_schema["model_columns"]
@@ -575,15 +608,18 @@ def build_ranking_dataset(
                     feedback.discard(target_split)
                 state.finish(requests, events, t, feedback)
                 written += 1
+                replayed_events += len(events)
                 cutoff = t
                 if written % 10000 == 0 or time.perf_counter() - last_progress >= 30:
                     print(
-                        f"{written:,} timestamp batches; cutoff {t}; emitted {sum(w.count for w in feature_writers.values()):,} pairs",
+                        f"{progress.message(written, replayed_events)}; cutoff {t}; "
+                        f"emitted {sum(w.count for w in feature_writers.values()):,} pairs",
                         flush=True,
                     )
                     last_progress = time.perf_counter()
                 if max_timestamps is not None and written >= max_timestamps:
                     break
+            print(progress.message(written, replayed_events), flush=True)
             for writer in [
                 *feature_writers.values(),
                 *target_writers.values(),

@@ -78,13 +78,12 @@ class User:
     snapshot: np.ndarray
     snapshot_key: tuple
     observed: deque
+    clicked_rows: list = field(default_factory=list)
     categories: Counter = field(default_factory=Counter)
     subcategories: Counter = field(default_factory=Counter)
     n_observed: int = 0
     last_impression: pd.Timestamp | None = None
     version: int = 0
-    # One title-vector sum per category, independent of the bounded sequence.
-    interest_sums: dict = field(default_factory=dict)
 
 
 class TemporalState:
@@ -147,14 +146,13 @@ class TemporalState:
                     raise ValueError(f"Supplied history changed for user {key}")
                 continue
             snapshot = self.bundle.rows(codes)
-            user = User(snapshot, codes, deque(maxlen=self.cfg.history_cap))
+            user = User(
+                snapshot,
+                codes,
+                deque(maxlen=max(self.cfg.history_cap, self.cfg.recent_count)),
+            )
             user.categories.update(self.cat[snapshot])
             user.subcategories.update(self.subcat[snapshot])
-            for article in snapshot:
-                category = self.cat[article]
-                if category not in user.interest_sums:
-                    user.interest_sums[category] = np.zeros(self.cfg.text_dim, np.float32)
-                user.interest_sums[category] += self.bundle.title[article]
             self.users[key] = user
 
     def profile(self, user_code, t):
@@ -172,7 +170,9 @@ class TemporalState:
         seed = (
             user.snapshot
             if self.cfg.snapshot_order_verified
-            else np.sort(user.snapshot)
+            else np.random.default_rng(self.cfg.seed + key).permutation(
+                np.sort(user.snapshot)
+            )
         )
         history = np.r_[seed, [a for _, a in observed]].astype(np.int32)[
             -self.cfg.history_cap :
@@ -180,8 +180,9 @@ class TemporalState:
         recent = [
             a for time, a in observed if t.value - time <= self.cfg.recent_hours * HOUR
         ][-self.cfg.recent_count :]
-        text, valid_text = normalised_mean(self.bundle.text, history)
-        entity, valid_entity = normalised_mean(self.bundle.entity, history)
+        full_history = np.r_[user.snapshot, user.clicked_rows].astype(np.int32)
+        text, valid_text = normalised_mean(self.bundle.text, full_history)
+        entity, valid_entity = normalised_mean(self.bundle.entity, full_history)
         long, _ = normalised_mean(self.bundle.text, user.snapshot)
         recent_vector, valid_recent = normalised_mean(self.bundle.text, recent)
         interests = []
@@ -189,11 +190,10 @@ class TemporalState:
         for cat, _ in sorted(user.categories.items(), key=lambda x: (-x[1], x[0]))[
             : self.cfg.interest_count
         ]:
-            # Use all causal clicks, even when their rows leave the sequence cap.
-            vector = user.interest_sums[cat]
-            norm = np.linalg.norm(vector)
-            if norm > 0:
-                interests.append(vector / norm)
+            rows = full_history[self.cat[full_history] == cat]
+            vector, valid = normalised_mean(self.bundle.title, rows)
+            if valid and np.linalg.norm(vector) > 0:
+                interests.append(vector)
                 interest_categories.append(cat)
         padded = np.zeros(self.cfg.history_cap, np.int32)
         padded[: len(history)] = history
@@ -206,13 +206,14 @@ class TemporalState:
                 -1, self.cfg.text_dim
             ),
             "history_rows": padded,
+            "full_history_rows": full_history,
             "history_mask": padded != 0,
             "selected_interest_categories": interest_categories,
             "recent_rows": list(map(int, recent)),
             "history_length": len(user.snapshot) + user.n_observed,
             "retained_length": len(history),
-            "valid_text_fraction": valid_text / max(1, len(history)),
-            "valid_entity_fraction": valid_entity / max(1, len(history)),
+            "valid_text_fraction": valid_text / max(1, len(full_history)),
+            "valid_entity_fraction": valid_entity / max(1, len(full_history)),
             "has_text": bool(np.linalg.norm(text) > 0),
             "has_entity": bool(np.linalg.norm(entity) > 0),
             "has_recent": bool(valid_recent and np.linalg.norm(recent_vector) > 0),
@@ -304,13 +305,10 @@ class TemporalState:
                 user = self.users[int(event.user_code)]
                 a = self.bundle.lookup[int(event.news_code)]
                 user.observed.append((t.value, a))
+                user.clicked_rows.append(a)
                 user.n_observed += 1
                 user.categories[self.cat[a]] += 1
                 user.subcategories[self.subcat[a]] += 1
-                category = self.cat[a]
-                if category not in user.interest_sums:
-                    user.interest_sums[category] = np.zeros(self.cfg.text_dim, np.float32)
-                user.interest_sums[category] += self.bundle.title[a]
                 user.version += 1
         self.profiles.clear()
         self.last_update = t

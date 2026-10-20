@@ -1,21 +1,14 @@
 # Notebook builders
 
-The notebooks in `1_Data_Preparation/` and `2_EDA/` are generated from these scripts (nbformat) so that text, code and
-figure conventions stay in one place. Editing the `.ipynb` files directly also works; regenerate only if you change a builder.
+These optional scripts generate the preparation/EDA notebooks. Running a builder overwrites its target notebook; normal execution uses the existing notebooks directly.
 
-```
-python3 notebook_builders/build_prep.py        # -> 1_Data_Preparation/clean_and_validate_data.ipynb
-python3 notebook_builders/build_impression.py  # -> 2_EDA/impression_analysis.ipynb
-python3 notebook_builders/build_user.py        # -> 2_EDA/user_analysis.ipynb
-python3 notebook_builders/build_article.py     # -> 2_EDA/article_temporal_analysis.ipynb
-cd 1_Data_Preparation && jupyter nbconvert --to notebook --execute --inplace clean_and_validate_data.ipynb
-cd ../2_EDA && jupyter nbconvert --to notebook --execute --inplace impression_analysis.ipynb   # same for the other two
-```
+| Script | What it generates or checks |
+|---|---|
+| `build_prep.py` | `1_Data_Preparation/clean_and_validate_data.ipynb` |
+| `build_impression.py` | `2_EDA/impression_analysis.ipynb` |
+| `build_user.py` | `2_EDA/user_analysis.ipynb` |
+| `build_article.py` | `2_EDA/article_temporal_analysis.ipynb` |
+| `eda_common.py` | Shared EDA notebook-generation helpers |
+| `verify_split.py` | Standalone split-verification checks |
 
-`verify_split.py` is the stand-alone script used on 14 Oct 2026 to double-check the split before the notebook existed;
-its checks are now part of the data-preparation notebook.
-
-Stages 3/4 have visible method cells and import shared checks, caching and storage from `src/newsrec/`.
-They have no builder; edit their notebook method/settings cells directly.
-Builders here apply only to data preparation and EDA and are not needed for normal runs.
-Running a builder overwrites its generated notebooks; edit stages 3/4 directly.
+Stages 3/4 are edited directly in their notebooks and have no builders. See the [project README](../README.md) for the execution workflow.
