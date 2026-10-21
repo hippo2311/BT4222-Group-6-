@@ -90,6 +90,8 @@ def feature_run(
     if max_timestamps is not None and max_timestamps < 1:
         raise ValueError("max_timestamps must be positive or None")
     name = f"{cfg.update_mode}-{target_split or 'all'}"
+    if build_options.get("optimized", True):
+        name += "-optimized"
     if max_timestamps is not None:
         name += f"-smoke-{max_timestamps}"
     run_dir = Path(root) / "4_Feature_Engineering/artifacts" / name

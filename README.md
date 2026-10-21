@@ -72,3 +72,5 @@ python -m pytest -q
 The first command compares a diagnostic logistic model against popularity on full validation slates; the second runs automated checks. [Notebook builders](notebook_builders/README.md) are optional generators for stages 1/2 and overwrite the notebooks they generate.
 
 Methods explored, design decisions and the latest validated state are recorded in [journal.md](journal.md).
+
+On `perf/feature-replay`, stage 4 writes a separate `prequential-all-optimized/` experiment and preserves the audited full build. See [the optimisation experiment](PERFORMANCE.md) for measured prefix results, comparison commands and full-run instructions.

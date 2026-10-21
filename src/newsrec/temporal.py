@@ -35,6 +35,8 @@ class PairStore:
         self.db.execute(
             "CREATE TABLE pairs(u INTEGER,a INTEGER,e INTEGER,c INTEGER,last INTEGER,PRIMARY KEY(u,a)) WITHOUT ROWID"
         )
+        self.commit_interval = 1
+        self.pending_updates = 0
 
     def lookup(self, users, articles):
         result = []
@@ -67,9 +69,13 @@ class PairStore:
             "INSERT INTO pairs VALUES(?,?,?,?,?) ON CONFLICT(u,a) DO UPDATE SET e=e+excluded.e,c=c+excluded.c,last=excluded.last",
             rows,
         )
-        self.db.commit()
+        self.pending_updates += 1
+        if self.pending_updates >= self.commit_interval:
+            self.db.commit()
+            self.pending_updates = 0
 
     def close(self):
+        self.db.commit()
         self.db.close()
 
 

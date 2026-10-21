@@ -171,6 +171,14 @@ For model development, record **prequential or frozen mode in every model-result
 
 The next experiments are a LightGBM baseline and feature-group ablations on the same validation protocol, followed by real retrieved-candidate integration and end-to-end evaluation once candidate generation is available. These are pending experiments, not completed results.
 
+## 12. Experimental replay optimisation — 21 October 2026
+
+On `perf/feature-replay`, profiling preceded sampling-first training feature calculation and batched SQLite commits. Every allowed event still updates state after its timestamp; full-slate/custom features conservatively retain full computation. Incremental profile sums and further vectorisation were deferred. Coverage retains full-log denominators; quality statistics describe written rows.
+
+A fresh-process 3,000-timestamp comparison measured 41.63 s for the original driver and 38.02 s for the prototype (about 9% less time). All 27,027 selected rows, labels, negative groups and 4,008 profile references matched the original driver and the saved full v2 prefix within the documented tolerance; coverage matched exactly. This early training prefix is not full-data validation or evidence of a particular full-run speedup.
+
+The audited v2 artifacts and manifest remain unchanged. Experimental outputs have a separate `-optimized` directory. Shared implementation changes invalidate any claim that the old audit certifies this branch's code. Full-run comparison and a fresh audit are required before adopting the prototype. See [PERFORMANCE.md](PERFORMANCE.md) for scope, evidence and commands. The final section below continues to describe the adopted **v2 reference**, not a completed optimisation rollout.
+
 ## Current approach and validated state — 20 October 2026
 
 **Adopted schema:** `ranking-features-v2-full-causal-pooling`. **Status:** ready for offline model development under the declared prequential feedback protocol. No additional full rebuild is required unless inputs, settings, feature selections or calculations change.

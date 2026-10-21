@@ -373,6 +373,58 @@ def replay_workload(processed, splits, max_timestamps=None):
     return timestamps, events
 
 
+def _accumulate_coverage(
+    coverage,
+    split,
+    events,
+    requests,
+    state,
+    bundle,
+    t,
+    train_users,
+    train_articles,
+    vectors,
+):
+    """Cheap full-log coverage, separate from sampled candidate feature work."""
+    rows = bundle.rows(events.news_code)
+    # Sampling must not hide an ineligible dropped negative. NaT compares False.
+    if not (vectors["available_from"][rows] <= t.to_datetime64()).all():
+        raise ValueError("Candidate catalogue contains future/unavailable articles")
+    profiles = {int(u): state.profile(u, t) for u in requests.user_code.unique()}
+    users = events.user_code.to_numpy()
+    new_user = np.fromiter(
+        (int(u) not in train_users for u in users), bool, len(events)
+    )
+    new_article = np.fromiter(
+        (int(a) not in train_articles for a in events.news_code), bool, len(events)
+    )
+    empty = np.fromiter(
+        (profiles[int(u)]["history_length"] == 0 for u in users), bool, len(events)
+    )
+    cohorts = (
+        ("shown_exposures", np.ones(len(events), bool)),
+        ("clicked_exposures", events.clicked.to_numpy() == 1),
+        ("new_users_vs_train", new_user),
+        ("returning_users_vs_train", ~new_user),
+        ("articles_unexposed_in_train", new_article),
+        ("no_causal_history", empty),
+    )
+    validities = {
+        "text": vectors["article_has_text"][rows],
+        "entity": vectors["article_has_entity"][rows],
+        "text_profile": np.fromiter(
+            (profiles[int(u)]["has_text"] for u in users), bool, len(events)
+        ),
+        "entity_profile": np.fromiter(
+            (profiles[int(u)]["has_entity"] for u in users), bool, len(events)
+        ),
+    }
+    for rep, valid in validities.items():
+        for cohort, mask in cohorts:
+            coverage[split, rep, cohort, "n"] += int(mask.sum())
+            coverage[split, rep, cohort, "k"] += int(valid[mask].sum())
+
+
 def build_ranking_dataset(
     root,
     cfg=DEFAULT_SETTINGS,
@@ -380,12 +432,14 @@ def build_ranking_dataset(
     target_split=None,
     max_timestamps=None,
     overwrite=False,
+    optimized=True,
+    pair_commit_interval=1000,
     state_factory=TemporalState,
     feature_builder=None,
     negative_sampler=None,
     schema_builder=None,
 ):
-    """Replay complete historical logs; sample only the written training examples.
+    """Replay all historical events; optionally sample training pairs before features.
 
     max_timestamps is a chronological smoke run starting at training start, never
     an arbitrary slice without state. Smoke output has a separate run directory.
@@ -397,6 +451,8 @@ def build_ranking_dataset(
         raise ValueError(
             "Pass feature_builder, negative_sampler and schema_builder from the feature notebook"
         )
+    if pair_commit_interval < 1:
+        raise ValueError("pair_commit_interval must be positive")
     active_schema = validate_feature_schema(schema_builder(cfg))
     root = Path(root)
     if max_timestamps is not None and max_timestamps < 1:
@@ -425,8 +481,10 @@ def build_ranking_dataset(
         SPLITS if target_split is None else SPLITS[: SPLITS.index(target_split) + 1]
     )
     total_batches, total_events = replay_workload(processed, splits, max_timestamps)
-    name = f"{cfg.update_mode}-{target_split or 'all'}" + (
-        f"-smoke-{max_timestamps}" if max_timestamps else ""
+    name = (
+        f"{cfg.update_mode}-{target_split or 'all'}"
+        + ("-optimized" if optimized else "")
+        + (f"-smoke-{max_timestamps}" if max_timestamps else "")
     )
     out = root / "4_Feature_Engineering" / "artifacts" / name
     if out.exists():
@@ -493,6 +551,29 @@ def build_ranking_dataset(
     state = state_factory(
         bundle, *time_horizon(root, splits), cfg, pair_path=out / "pair_history.sqlite"
     )
+    # Writes still happen after every timestamp. Only transaction commits are batched;
+    # subsequent reads on this same connection see all earlier pending writes.
+    state_commit_interval = pair_commit_interval if optimized else 1
+    state.pairs.commit_interval = state_commit_interval
+    builder_globals = getattr(feature_builder, "__globals__", {})
+    custom_features = set(builder_globals.get("EXTRA_FEATURES", {}))
+    sample_first = (
+        optimized
+        and "EXTRA_FEATURES" in builder_globals
+        and not cfg.context_features
+        and not custom_features.intersection(active_schema["model_columns"])
+    )
+    timings = Counter()
+    coverage_vectors = {
+        "available_from": np.r_[
+            np.datetime64("NaT", "ns"),
+            bundle.availability.reindex(bundle.index.news_code).available_from.to_numpy(
+                dtype="datetime64[ns]"
+            ),
+        ],
+        "article_has_text": np.linalg.norm(bundle.text, axis=1) > 0,
+        "article_has_entity": np.linalg.norm(bundle.entity, axis=1) > 0,
+    }
     written = 0
     replayed_events = 0
     progress = ReplayProgress(total_batches, total_events)
@@ -506,58 +587,95 @@ def build_ranking_dataset(
     model_columns = active_schema["model_columns"]
     try:
         with measure(root, "ranking_features"):
+            previous_end = time.perf_counter()
             for t, requests, events in replay_batches(root, cfg, splits):
+                checkpoint = time.perf_counter()
+                timings["stream_read_group"] += checkpoint - previous_end
                 state.begin(requests, t)
+                timings["state_begin"] += time.perf_counter() - checkpoint
                 for split in write_splits:
                     req = requests[requests.split.eq(split)]
                     ev = events[events.split.eq(split)]
                     if not len(req):
                         continue
-                    f = feature_builder(req, ev, state, bundle, cfg, "logged")
-                    generated[split] += len(f)
-                    clicked = (
-                        ev.set_index(["impression_uid", "news_code"])
-                        .clicked.reindex(
-                            pd.MultiIndex.from_frame(f[["impression_uid", "news_code"]])
+                    checkpoint = time.perf_counter()
+                    generated[split] += len(ev)
+                    groups = None
+                    selected_events = ev
+                    if split == "train":
+                        groups, selected = negative_sampler(ev, cfg)
+                        keep = np.fromiter(
+                            (
+                                (int(u), int(a)) in selected
+                                for u, a in zip(ev.impression_uid, ev.news_code)
+                            ),
+                            bool,
+                            len(ev),
                         )
-                        .to_numpy()
-                        == 1
+                        selected_events = ev.loc[keep]
+                        selected_counts["all_negatives"] += int(ev.clicked.eq(0).sum())
+                        selected_counts["kept_unique_negatives"] += int(
+                            selected_events.clicked.eq(0).sum()
+                        )
+                        selected_counts["positive_groups"] += len(groups)
+                        selected_counts["negative_group_memberships"] += sum(
+                            map(len, groups.negative_news_codes)
+                        )
+                    timings["sampling"] += time.perf_counter() - checkpoint
+                    checkpoint = time.perf_counter()
+                    # Full candidate sets are mandatory for slate context and arbitrary
+                    # selected notebook custom features; never compute those on a sample.
+                    feature_events = (
+                        selected_events
+                        if split == "train" and sample_first and len(selected_events)
+                        else ev
                     )
-                    new_user = np.fromiter(
-                        (int(u) not in train_users for u in f.user_code), bool, len(f)
+                    f = feature_builder(
+                        req, feature_events, state, bundle, cfg, "logged"
                     )
-                    new_article = np.fromiter(
-                        (int(a) not in train_articles for a in f.news_code),
-                        bool,
-                        len(f),
-                    )
-                    cohorts = (
-                        ("shown_exposures", np.ones(len(f), bool)),
-                        ("clicked_exposures", clicked),
-                        ("new_users_vs_train", new_user),
-                        ("returning_users_vs_train", ~new_user),
-                        ("articles_unexposed_in_train", new_article),
-                        ("no_causal_history", f.no_causal_history.to_numpy() > 0),
-                    )
-                    for rep, col in (
-                        ("text", "article_has_text"),
-                        ("entity", "article_has_entity"),
-                        ("text_profile", "no_text_profile"),
-                        ("entity_profile", "no_entity_profile"),
+                    if split == "train" and (
+                        not sample_first or not len(selected_events)
                     ):
-                        valid = (
-                            f[col].to_numpy() > 0
-                            if rep in ("text", "entity")
-                            else f[col].to_numpy() == 0
+                        keep = np.fromiter(
+                            (
+                                (int(u), int(a)) in selected
+                                for u, a in zip(f.impression_uid, f.news_code)
+                            ),
+                            bool,
+                            len(f),
                         )
-                        for cohort, mask in cohorts:
-                            coverage[split, rep, cohort, "n"] += int(mask.sum())
-                            coverage[split, rep, cohort, "k"] += int(valid[mask].sum())
+                        f = f.loc[keep].reset_index(drop=True)
+                    timings["features"] += time.perf_counter() - checkpoint
+                    checkpoint = time.perf_counter()
+                    # Coverage remains exposure-weighted over ALL logged events, even
+                    # when expensive training feature calculation uses selected pairs.
+                    _accumulate_coverage(
+                        coverage,
+                        split,
+                        ev,
+                        req,
+                        state,
+                        bundle,
+                        t,
+                        train_users,
+                        train_articles,
+                        coverage_vectors,
+                    )
                     matrix = f[model_columns].to_numpy()
                     zero = (matrix == 0).sum(axis=0)
-                    minimum = matrix.min(axis=0)
-                    maximum = matrix.max(axis=0)
+                    minimum = (
+                        matrix.min(axis=0)
+                        if len(f)
+                        else np.full(len(model_columns), np.inf)
+                    )
+                    maximum = (
+                        matrix.max(axis=0)
+                        if len(f)
+                        else np.full(len(model_columns), -np.inf)
+                    )
                     for j, col in enumerate(model_columns):
+                        if not len(f):
+                            continue
                         old = quality.setdefault(
                             (split, col),
                             {
@@ -571,42 +689,37 @@ def build_ranking_dataset(
                         old["zero"] += int(zero[j])
                         old["min"] = min(old["min"], float(minimum[j]))
                         old["max"] = max(old["max"], float(maximum[j]))
+                    timings["diagnostics"] += time.perf_counter() - checkpoint
+                    checkpoint = time.perf_counter()
                     ref_writers[split].add(_profile_references(req, state, t))
-                    if split == "train":
-                        groups, selected = negative_sampler(ev, cfg)
+                    if groups is not None:
                         group_writer.add(groups)
-                        keep = np.array(
-                            [
-                                (int(u), int(a)) in selected
-                                for u, a in zip(f.impression_uid, f.news_code)
-                            ]
+                    expected_pairs = selected_events[
+                        ["impression_uid", "news_code"]
+                    ].reset_index(drop=True)
+                    if (
+                        f[["impression_uid", "news_code"]]
+                        .reset_index(drop=True)
+                        .equals(expected_pairs)
+                    ):
+                        labels = selected_events[
+                            ["impression_uid", "news_code", "clicked"]
+                        ].reset_index(drop=True)
+                    else:
+                        labels = f[["impression_uid", "news_code"]].merge(
+                            ev[["impression_uid", "news_code", "clicked"]],
+                            validate="one_to_one",
                         )
-                        selected_counts["all_negatives"] += int(ev.clicked.eq(0).sum())
-                        kept_labels = ev.set_index(
-                            ["impression_uid", "news_code"]
-                        ).clicked.reindex(
-                            pd.MultiIndex.from_frame(
-                                f.loc[keep, ["impression_uid", "news_code"]]
-                            )
-                        )
-                        selected_counts["kept_unique_negatives"] += int(
-                            kept_labels.eq(0).sum()
-                        )
-                        selected_counts["positive_groups"] += len(groups)
-                        selected_counts["negative_group_memberships"] += sum(
-                            map(len, groups.negative_news_codes)
-                        )
-                        f = f.loc[keep].reset_index(drop=True)
-                    labels = f[["impression_uid", "news_code"]].merge(
-                        ev[["impression_uid", "news_code", "clicked"]],
-                        validate="one_to_one",
-                    )
                     feature_writers[split].add(f)
                     target_writers[split].add(labels)
+                    timings["references_and_write"] += time.perf_counter() - checkpoint
+                checkpoint = time.perf_counter()
                 feedback = set(splits)
                 if cfg.update_mode == "frozen":
                     feedback.discard(target_split)
                 state.finish(requests, events, t, feedback)
+                timings["state_finish"] += time.perf_counter() - checkpoint
+                previous_end = time.perf_counter()
                 written += 1
                 replayed_events += len(events)
                 cutoff = t
@@ -627,6 +740,9 @@ def build_ranking_dataset(
                 group_writer,
             ]:
                 writer.close()
+        pd.DataFrame(
+            [{"stage": stage, "seconds": seconds} for stage, seconds in timings.items()]
+        ).to_csv(out / "replay_timing.csv", index=False)
         coverage_rows = []
         for split, rep, cohort, kind in sorted(coverage):
             if kind != "n":
@@ -650,6 +766,9 @@ def build_ranking_dataset(
                 split=s,
                 feature=f,
                 **values,
+                scope="written_training_pairs"
+                if s == "train"
+                else "complete_logged_slates",
                 zero_fraction=values["zero"] / values["n"],
                 nonfinite_count=0,
             )
@@ -700,6 +819,7 @@ def build_ranking_dataset(
             out / "feature_quality.csv",
             out / "sampling_summary.json",
             out / "feature_cost.csv",
+            out / "replay_timing.csv",
         ]
         write_json(
             out / "run_manifest.json",
@@ -708,6 +828,11 @@ def build_ranking_dataset(
                 cfg,
                 sources,
                 outputs,
+                execution_variant="optimized" if optimized else "reference",
+                sample_training_before_features=sample_first,
+                pair_commit_interval=state_commit_interval,
+                quality_scope="written rows; training sampled, held-out complete",
+                coverage_scope="all replayed logged exposures",
                 full_run=max_timestamps is None,
                 last_scored_timestamp=cutoff,
                 timestamp_batches=written,

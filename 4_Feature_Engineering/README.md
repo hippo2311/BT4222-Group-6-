@@ -18,6 +18,6 @@ Requests at the same timestamp are scored before feedback updates. Pooled vector
 | Coverage, quality, sampling and cost reports | Representation fallback, feature ranges, sampling retention and measured resource use |
 | Manifest and run status | Input/output provenance and completion state |
 
-The full prequential run is `artifacts/prequential-all/`; smoke runs use separate folders. Model consumers must use the schema's allowlist, encode category IDs appropriately, and join labels on both keys. `newsrec.io.open_feature_run` validates/opens datasets, and `newsrec.ranking` exposes the notebook methods to Python consumers.
+The audited full prequential run is `artifacts/prequential-all/`. On the optimisation branch, new full runs use `artifacts/prequential-all-optimized/`; smoke runs use separate folders. The experiment adds phase timings and computes training quality statistics on written sampled rows; coverage still describes all logged exposures. Model consumers must use the schema's allowlist, encode category IDs appropriately, and join labels on both keys. `newsrec.io.open_feature_run` validates/opens datasets, and `newsrec.ranking` exposes the notebook methods to Python consumers.
 
 Execution and rebuild instructions are in the [project README](../README.md). Method comparisons, validation results and the current approach are in [journal.md](../journal.md).
