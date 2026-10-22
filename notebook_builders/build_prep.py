@@ -1,6 +1,7 @@
 """Builds 1_Data_Preparation/clean_and_validate_data.ipynb (nbformat v4)."""
-import nbformat as nbf
 from pathlib import Path
+
+import nbformat as nbf
 
 OUT = Path(__file__).resolve().parent.parent / "1_Data_Preparation" / "clean_and_validate_data.ipynb"
 OUT.parent.mkdir(parents=True, exist_ok=True)
