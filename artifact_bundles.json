@@ -1,0 +1,8 @@
+{
+  "model-ready": {
+    "version": "model-ready-v2-audited",
+    "drive_folder": "https://drive.google.com/drive/folders/1rkP9G4Bxp1xjhFW1COErvms-CMeNtJUd",
+    "remote_prefix": "model-ready/model-ready-v2-audited",
+    "manifest_sha256": "7502055efcd35865a2778fa10823e0ba8720f9a5d3dfec0fa08365f328881c27"
+  }
+}

@@ -171,6 +171,12 @@ For model development, record **prequential or frozen mode in every model-result
 
 The next experiments are a LightGBM baseline and feature-group ablations on the same validation protocol, followed by real retrieved-candidate integration and end-to-end evaluation once candidate generation is available. These are pending experiments, not completed results.
 
+## 12. Shared model-ready artifact bundle — 22 October 2026
+
+The audited v2 outputs were packaged without executing stages 0–4: stage 1 processed data/reports, stage 3 representations and stage 4 full ranking data, in three ZIPs plus a pinned checksum manifest. The optimisation experiment and raw split inputs are excluded. `download_artifacts.py --bundle model-ready` verifies compatible shared Python helpers and file hashes, restores missing files, reuses matching files and refuses conflicts. `publish_artifacts.py` packages locally for manual upload; notebooks do not upload on ordinary execution. Published versions preserve their manifest and require a new version when data/code change.
+
+All 12 focused transfer tests passed. A full local archive round trip restored 40,363,532 feature rows and opened both feature and representation loaders; no notebooks ran. Drive upload is owner-managed. On 22 October 2026, a fresh isolated project successfully ran the default downloader against the uploaded folder: the pinned manifest and all three archive hashes matched, every extracted file passed verification, the feature and representation loaders opened, and all 40,363,532 rows / 50 model columns were present. Repeat local verification passed. The test took about 260 seconds and its temporary downloaded/extracted data were removed. Evidence: `results/artifact_bundles/drive_download_test.json`. The expected remote path is `MIND/model-ready/model-ready-v2-audited/`. Instructions: [ARTIFACTS.md](ARTIFACTS.md). No feature calculation or audited data file was changed.
+
 ## Current approach and validated state — 20 October 2026
 
 **Adopted schema:** `ranking-features-v2-full-causal-pooling`. **Status:** ready for offline model development under the declared prequential feedback protocol. No additional full rebuild is required unless inputs, settings, feature selections or calculations change.
