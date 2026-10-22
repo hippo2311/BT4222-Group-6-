@@ -463,7 +463,10 @@ def compute_availability(processed):
         .agg(pl.col("timestamp").min())
         .filter(pl.col("history").is_not_null() & (pl.col("history") != ""))
         .with_columns(pl.col("history").str.split(" ").alias("news_id"))
-        .explode("news_id", empty_as_null=True)
+        # Empty histories were filtered above. Do not pass the removed
+        # ``empty_as_null`` keyword: recent Polars releases reject it on
+        # LazyFrame.explode(), whereas the default explosion is sufficient here.
+        .explode("news_id")
         .with_columns(
             pl.col("news_id").str.strip_prefix("N").cast(pl.Int32).alias("news_code")
         )
