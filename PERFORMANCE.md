@@ -26,6 +26,16 @@ Selected pair keys and labels matched exactly. Feature values and request profil
 
 Local evidence: `results/optimization/compare-3000/comparison.json`, phase timings in the optimized run, and `results/optimization/baseline-profile/profile.txt`. Results are gitignored.
 
+## Full-run result — 22 October 2026
+
+The full run completed all 520,464 timestamps and wrote 40,363,532 rows. Recorded construction time fell from 10,097.48 s to 9,448.85 s (10m 49s saved; 6.42% less time). Sampled peak process RSS fell from 4,819.70 MB to 4,338.97 MB (9.97% lower in these runs). These are observed runs, not controlled repeated benchmarks.
+
+The full saved-output comparison verified all new artifact hashes, identical source manifests/schema, exactly identical keys/labels, negative groups, full-log coverage, all 2,609,219 profile references and every validation/test feature. Training differed only in five cosine columns, with maximum absolute difference 5.3644e-7. Three recent-cosine values exceeded the original `rtol=1e-6, atol=1e-7`; every value met absolute tolerance 1e-6. This is **not** a pass at the original tolerance.
+
+For one strict-tolerance violation, the original 128-row matrix and sampled 19-row matrix reproduced their respective saved cosine values exactly using the same independently reconstructed profile. This demonstrates float32 matrix-kernel rounding from changed batch shapes. No feature formula was changed or rounding forcibly applied. The prototype remains separate from the audited v2 reference; this comparison is not a rerun of the independent causal audit.
+
+Evidence: `results/optimization/full_comparison.json`. The original v2 manifest remains unchanged; notebook execution finished with no saved error outputs. No rebuild is needed to investigate these results.
+
 ## Run it
 
 From the project root, after activating `.venv`, reproduce the small comparison:
@@ -47,4 +57,4 @@ python run_all.py --from-stage 4 --to-stage 4 --force
 
 On this branch, full output goes to `4_Feature_Engineering/artifacts/prequential-all-optimized/`; smoke output adds `-smoke-N`. The runner refreshes source-notebook outputs. The original full artifact directory is preserved. Restart an existing notebook kernel before using edited helpers.
 
-After the full experiment, compare all selected pairs/labels, features and profiles against v2, then redo readiness/leakage checks before adopting the prototype for model work. Any feature differences need investigation and a new version/audit. Model baselines and column-selection ablations can continue using the audited v2 data meanwhile.
+The full-output comparison is now recorded above. Before formally adopting the prototype, record the revised numerical tolerance and complete its readiness review; retain a distinct execution/version record rather than claiming the original v2 audit certifies it. Model baselines and column-selection ablations can continue using the audited v2 data meanwhile.
