@@ -6,6 +6,7 @@ Candidate generation retrieves a small set of articles from the full, time-eligi
 |---|---|
 | [cg_evaluation.py](cg_evaluation.py) | Shared Recall@M evaluator for every candidate-generation model. Loads the split once, validates candidates, and returns pooled and per-impression recall. |
 | [baseline_models/CG_popularity_baseline.ipynb](baseline_models/CG_popularity_baseline.ipynb) | Fits non-personalised popularity, retrieves time-eligible Top-500 candidates, writes the standard format, and evaluates them. |
+| [neural_models/CG_content_two_tower_mlp.ipynb](neural_models/CG_content_two_tower_mlp.ipynb) | Trains a content two-tower MLP on causal request histories, scores the time-eligible catalogue, writes Top-500 candidates and evaluates them with the shared evaluator. |
 
 Generated files are written under `artifacts/` and are gitignored. Evaluation tables are written under the project-level `results/` folder.
 
