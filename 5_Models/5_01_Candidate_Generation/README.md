@@ -8,6 +8,7 @@ Candidate generation retrieves a small set of articles from the full, time-eligi
 |---|---|
 | [cf_models.py](cf_models.py) | Shared project context and static binary user-item matrix. Exposes `load_context`, `build_interaction_matrix` and `resolve_device`; model-specific logic stays in the notebooks. |
 | [cg_evaluation.py](cg_evaluation.py) | Shared Recall@M evaluator for every candidate-generation model. Loads the split once, validates candidates, and returns pooled and per-impression recall. |
+| [cg_result_writer.py](cg_result_writer.py) | Shared `CandidateWriter` and `CANDIDATE_SCHEMA` for the standard long-format candidate table. |
 | [baseline_models/CG_popularity_baseline.ipynb](baseline_models/CG_popularity_baseline.ipynb) | Fits non-personalised popularity from prior exposures, retrieves time-eligible Top-500 candidates, writes the standard format, and evaluates them. |
 | [baseline_models/CG_collaborative_filtering_baseline.ipynb](baseline_models/CG_collaborative_filtering_baseline.ipynb) | Builds item-item cosine Top-K neighbours from the shared user-item matrix, scores request histories, writes Top-500 candidates and evaluates them. |
 | [baseline_models/CG_content_baseline.ipynb](baseline_models/CG_content_baseline.ipynb) | Text, entity and text/entity cosine-similarity baselines over causal request profiles. |
@@ -17,6 +18,8 @@ Candidate generation retrieves a small set of articles from the full, time-eligi
 | [neural_models/CG_ncf_with_popularity.ipynb](neural_models/CG_ncf_with_popularity.ipynb) | NCF with frozen fit-split popularity features appended to the MLP input. |
 
 Generated files are written under `artifacts/<model>/` and are gitignored. Evaluation tables are written under the project-level `results/` folder.
+
+Every model notebook exposes the same `FULL_RUN` toggle in its setup cell. `FULL_RUN = True` runs the complete pipeline. `FULL_RUN = False` runs a smoke pipeline: it scores a request subset, writes to an `artifacts/<model>_smoke/` directory, and evaluates a subset recall table as `smoke_recall_<split>.csv` instead of updating the shared result and comparison files.
 
 ## Shared data and matrix utilities
 
@@ -136,7 +139,7 @@ A new candidate-generation notebook should:
 
 1. Reuse `load_context`, `build_interaction_matrix` and `resolve_device` from `cf_models.py` when it needs the shared matrix or device selection.
 2. Keep model-specific scoring, neighbour construction and candidate selection in the notebook.
-3. Generate a standard table with the same `CANDIDATE_CAP` as every other model.
+3. Generate a standard table with the same `CANDIDATE_CAP` as every other model, using `CandidateWriter` from `cg_result_writer.py`.
 4. Evaluate it with the shared `CandidateEvaluator`.
 5. Save its own model, manifest and candidate artifacts under `artifacts/<model>/`.
 
