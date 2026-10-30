@@ -1,7 +1,8 @@
 """Shared pieces for the 2_EDA notebook builders (plain style, see BT4222-Group-10-main/2_eda.ipynb)."""
 import re
-import nbformat as nbf
 from pathlib import Path
+
+import nbformat as nbf
 
 HEADER_RE = re.compile(r"^(\s*)((?:for|if|elif|else|while|with|try|except|finally|def)\b[^;]*?:)\s*(\S.*)$")
 

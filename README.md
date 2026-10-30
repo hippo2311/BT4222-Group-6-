@@ -14,6 +14,14 @@ python -m pip install -r requirements.txt
 
 In VS Code, select `.venv/bin/python` as the notebook kernel.
 
+## Start model development with shared data
+
+```bash
+python download_artifacts.py --bundle model-ready
+```
+
+The shared v2 bundle is uploaded and verified. This command downloads/verifies the completed stage 1 processed data, stage 3 representations and stage 4 ranking features. Matching local files are reused. Start model notebooks directly; stages 0–4 do not need to run. Owner upload steps and the manual-download fallback are in [ARTIFACTS.md](ARTIFACTS.md).
+
 ## Workflow
 
 1. **Start at stage 1.** It uses local `train/`, `validation/` and `test/` files, or downloads missing inputs from the team's Drive. If Drive is unavailable, stage 0 downloads/extracts original MIND releases and creates the splits.

@@ -1,4 +1,7 @@
-import polars as pl, time, sys
+import time
+
+import polars as pl
+
 t0=time.time()
 B={s: pl.read_parquet(f"{s}/behaviors_{s}.parquet") for s in ["train","validation","test"]}
 N={s: pl.read_parquet(f"{s}/news_{s}.parquet") for s in ["train","validation","test"]}
