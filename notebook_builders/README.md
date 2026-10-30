@@ -1,6 +1,6 @@
 # Notebook builders
 
-These optional scripts generate the preparation/EDA notebooks. Running a builder overwrites its target notebook; normal execution uses the existing notebooks directly.
+These optional scripts generate the older MIND-large preparation and EDA notebooks. `build_prep.py` recreates the retired `clean_and_validate_data.ipynb`; do not run it for the current MIND-small preparation notebook. Running any builder overwrites its target notebook.
 
 | Script | What it generates or checks |
 |---|---|

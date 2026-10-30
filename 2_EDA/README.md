@@ -1,7 +1,7 @@
 # 2. Exploratory data analysis
 
 BT4222 Group 6 · final project · task 3. Consolidates the team's interim EDA (report sections 2.2 and Part 3) into three notebooks that run end to end on the processed
-files written by `1_Data_Preparation/clean_and_validate_data.ipynb`. All descriptive figures use the **training split**;
+files written by `1_Data_Preparation/1. data_preparation.ipynb`. These notebooks were originally developed with MIND-large; rerun and verify numerical findings on MIND-small. Descriptive figures use the **training split**;
 validation and test enter only where cold start is measured.
 
 | Notebook | Scope | Figures |
