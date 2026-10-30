@@ -13,3 +13,4 @@ psutil>=5.9,<8
 pytest>=8,<10
 gdown>=6.4,<7
 requests>=2.32,<3
+kagglehub>=1.0.3,<2
