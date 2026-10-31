@@ -7,7 +7,7 @@ test/
 *.tsv
 *.vec
 
-# derived data written by 1_Data_Preparation/clean_and_validate_data.ipynb (456 MB, regenerate in ~1 min)
+# derived data written by the data preparation notebook
 1_Data_Preparation/processed/
 
 # notebook and OS clutter
