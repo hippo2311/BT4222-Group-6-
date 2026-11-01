@@ -1,8 +1,8 @@
-"""Shared pieces for the 2_EDA notebook builders (plain style, see BT4222-Group-10-main/2_eda.ipynb)."""
+"""Shared pieces for the 2_EDA notebook builders. Style follows BT4222-Group-10/2_eda.ipynb: pandas only,
+print() summaries, numbered step comments, markdown with findings and model implications."""
 import re
-from pathlib import Path
-
 import nbformat as nbf
+from pathlib import Path
 
 HEADER_RE = re.compile(r"^(\s*)((?:for|if|elif|else|while|with|try|except|finally|def)\b[^;]*?:)\s*(\S.*)$")
 
@@ -52,22 +52,23 @@ def one_statement_per_line(src):
 EDA_DIR = Path(__file__).resolve().parent.parent / "2_EDA"
 
 # One short setup cell: paths, imports, a plot style. No framework.
-SETUP = r'''
+SETUP = r"""
+import os
 from pathlib import Path
+
 import numpy as np
 import pandas as pd
-import polars as pl            # only for the 70 M-row candidate table; everything small is pandas
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 
-# Project root = folder that contains 1_Data_Preparation/processed (run 1_Data_Preparation/clean_and_validate_data.ipynb first)
-try:
-    from google.colab import drive
-    drive.mount("/content/drive")
-    ROOT = Path("/content/drive/MyDrive/BT4222")
-except ImportError:
-    ROOT = next(p for p in [Path.cwd(), Path.cwd().parent] if (p / "1_Data_Preparation" / "processed").exists())
+# Project root = the folder that contains 1_Data_Preparation/processed (written by 1. data_preparation.ipynb)
+if "NEWSREC_ROOT" in os.environ:
+    ROOT = Path(os.environ["NEWSREC_ROOT"])
+elif (Path.cwd() / "1_Data_Preparation" / "processed").exists():
+    ROOT = Path.cwd()
+else:
+    ROOT = Path.cwd().parent
 PROCESSED = ROOT / "1_Data_Preparation" / "processed"
 FIG_DIR = ROOT / "2_EDA" / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -76,7 +77,7 @@ sns.set_theme(style="whitegrid", palette=["#2a78d6", "#eb6834", "#1baf7a", "#eda
 pd.set_option("display.width", 160)
 pd.set_option("display.max_columns", 30)
 print("Project root:", ROOT)
-'''
+"""
 
 
 def write_notebook(name, cells):
@@ -90,9 +91,41 @@ def write_notebook(name, cells):
     print("wrote", out, len(cells), "cells")
 
 
+PLOT_RE = re.compile(r"^# \d+\. Plots?\b:?\s*(.*)$")
+
+
+def split_plots(src):
+    """Split a section's source into one computation cell and one cell per figure.
+
+    The computation part ends at the first "# N. Plot" step comment; the plotting part is then cut at blank lines,
+    so each figure (plt.figure / plt.subplots block) becomes its own cell. Variables carry over between cells."""
+    lines = src.splitlines()
+    idx = next((i for i, line in enumerate(lines) if PLOT_RE.match(line)), None)
+    if idx is None:
+        return [src]
+    cells = ["\n".join(lines[:idx]).rstrip()]
+    suffix = PLOT_RE.match(lines[idx]).group(1).strip()
+    chunks, cur = [], []
+    for line in lines[idx + 1:]:
+        if line.strip():
+            cur.append(line)
+        elif cur:
+            chunks.append(cur)
+            cur = []
+    if cur:
+        chunks.append(cur)
+    for k, chunk in enumerate(chunks):
+        label = "# Plot" if len(chunks) == 1 else f"# Plot {k + 1} of {len(chunks)}"
+        if k == 0 and suffix:
+            label += ": " + suffix
+        cells.append("\n".join([label] + chunk))
+    return cells
+
+
 class Cells(list):
     def md(self, s):
         self.append(nbf.v4.new_markdown_cell(s.strip("\n")))
 
     def code(self, s):
-        self.append(nbf.v4.new_code_cell(one_statement_per_line(s.strip("\n"))))
+        for part in split_plots(one_statement_per_line(s.strip("\n"))):
+            self.append(nbf.v4.new_code_cell(part))
