@@ -9,6 +9,7 @@ test/
 
 # derived data written by the data preparation notebook
 1_Data_Preparation/processed/
+1_Data_Preparation/processed
 
 # notebook and OS clutter
 .ipynb_checkpoints/
@@ -20,8 +21,11 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 3_Representations/artifacts/
+3_Representations/artifacts
 4_Feature_Engineering/artifacts/
+4_Feature_Engineering/artifacts
 5_Models/5_01_Candidate_Generation/artifacts/
+5_Models/5_02_Reranking/artifacts/
 results/
 
 # Legacy executed copies (new runs update source notebooks in place)
@@ -32,3 +36,6 @@ tests/
 # Downloaded original archives and local split-build provenance
 0_Data_Acquisition/downloads/
 0_Data_Acquisition/split_manifest.json
+
+
+5_Models/5_02_Reranking/5_02_2 Classical/
