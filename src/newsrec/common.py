@@ -38,6 +38,7 @@ class Settings:
     article_ctr_min_exposures: int = 100
     half_life_min_exposures: int = 100
     negative_count: int = 4
+    training_negative_sampling: str = "epoch"
     update_mode: str = "prequential"
     context_features: bool = False
     parquet_batch_rows: int = 100000
@@ -64,6 +65,8 @@ class Settings:
                 raise ValueError(f"{key} must be positive")
         if not 0 <= self.title_weight <= 1 or self.ctr_strength <= 0:
             raise ValueError("Invalid fusion/smoothing weights")
+        if self.training_negative_sampling not in ("epoch", "fixed"):
+            raise ValueError("training_negative_sampling must be epoch or fixed")
         if self.update_mode not in ("prequential", "frozen"):
             raise ValueError("update_mode must be prequential or frozen")
 

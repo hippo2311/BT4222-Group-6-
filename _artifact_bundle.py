@@ -13,7 +13,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 PROJECT = Path(__file__).resolve().parent
-VERSION = "model-ready-v2-audited"
+VERSION = "v3-mindsmall"
 RUN = "4_Feature_Engineering/artifacts/prequential-all"
 PREFIXES = ("1_Data_Preparation/processed/", "3_Representations/artifacts/", RUN + "/")
 REPORTS = (
