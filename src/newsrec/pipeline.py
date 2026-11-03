@@ -385,7 +385,7 @@ def build_ranking_dataset(
     negative_sampler=None,
     schema_builder=None,
 ):
-    """Replay complete historical logs; sample only the written training examples.
+    """Replay complete logs; retain the full training pool for epoch sampling.
 
     max_timestamps is a chronological smoke run starting at training start, never
     an arbitrary slice without state. Smoke output has a separate run directory.
@@ -575,11 +575,15 @@ def build_ranking_dataset(
                     if split == "train":
                         groups, selected = negative_sampler(ev, cfg)
                         group_writer.add(groups)
-                        keep = np.array(
-                            [
-                                (int(u), int(a)) in selected
-                                for u, a in zip(f.impression_uid, f.news_code)
-                            ]
+                        keep = (
+                            np.ones(len(f), dtype=bool)
+                            if cfg.training_negative_sampling == "epoch"
+                            else np.array(
+                                [
+                                    (int(u), int(a)) in selected
+                                    for u, a in zip(f.impression_uid, f.news_code)
+                                ]
+                            )
                         )
                         selected_counts["all_negatives"] += int(ev.clicked.eq(0).sum())
                         kept_labels = ev.set_index(
@@ -597,6 +601,10 @@ def build_ranking_dataset(
                             map(len, groups.negative_news_codes)
                         )
                         f = f.loc[keep].reset_index(drop=True)
+                    # Keep each impression contiguous for bounded epoch reads.
+                    f = f.sort_values(
+                        ["impression_uid", "news_code"], kind="stable"
+                    ).reset_index(drop=True)
                     labels = f[["impression_uid", "news_code"]].merge(
                         ev[["impression_uid", "news_code", "clicked"]],
                         validate="one_to_one",
@@ -660,6 +668,11 @@ def build_ranking_dataset(
             out / "sampling_summary.json",
             dict(
                 selected_counts,
+                training_negative_sampling=cfg.training_negative_sampling,
+                saved_groups_epoch=0,
+                saved_groups_role="epoch-zero reference; resample from full training labels each epoch"
+                if cfg.training_negative_sampling == "epoch"
+                else "fixed training groups",
                 discarded_unique_negative_fraction=1
                 - selected_counts["kept_unique_negatives"]
                 / max(1, selected_counts["all_negatives"]),
@@ -709,6 +722,10 @@ def build_ranking_dataset(
                 sources,
                 outputs,
                 full_run=max_timestamps is None,
+                training_candidate_pool="complete"
+                if cfg.training_negative_sampling == "epoch"
+                else "sampled",
+                saved_groups_epoch=0,
                 last_scored_timestamp=cutoff,
                 timestamp_batches=written,
                 rows_before_sampling=dict(generated),
