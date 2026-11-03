@@ -16,12 +16,22 @@ notebook to run it elsewhere (for example on Colab).
 | [1_Baseline/RR_popularity_baseline.ipynb](1_Baseline/RR_popularity_baseline.ipynb) | Causal smoothed article CTR | Fixed rule; validation and test |
 | [1_Baseline/RR_content_similarity_baseline.ipynb](1_Baseline/RR_content_similarity_baseline.ipynb) | Cosine to the user's text / entity history profile | Text, entity and 3 fusion weights |
 | [2_MLP/RR_MLP.ipynb](2_MLP/RR_MLP.ipynb) | Tabular MLP | BCE vs BPR (3 negative samplers) vs BCE–BPR hybrid |
-| [3_Attention/RR_candidate_attention.ipynb](3_Attention/RR_candidate_attention.ipynb) | Text-only candidate→history attention | 1 vs 4 attention heads |
-| [3_Attention/RR_NRMS.ipynb](3_Attention/RR_NRMS.ipynb) | Text-only NRMS | Heads × dropout grid, then loss ablation on the winner |
-| [3_Attention/RR_hybrid_attention_mlp.ipynb](3_Attention/RR_hybrid_attention_mlp.ipynb) | Candidate attention + tabular MLP | 27-trial dropout / weight decay / width grid |
-| [3_Attention/RR_hybrid_nrms_mlp.ipynb](3_Attention/RR_hybrid_nrms_mlp.ipynb) | NRMS user encoder + tabular MLP | Single configuration |
-| [3_Attention/RR_hybrid_sequence_mlp.ipynb](3_Attention/RR_hybrid_sequence_mlp.ipynb) | LSTM/GRU user encoder + tabular MLP | `RNN_TYPE` × `OBJECTIVE` (BCE+BPR or LambdaNDCG) |
-| [RR_evaluate_generated_candidates.ipynb](RR_evaluate_generated_candidates.ipynb) | Sequence reranker on generated candidates | Generator vs reranker vs blend weights |
+| [3_Attention/RR_1_candidate_attention.ipynb](3_Attention/RR_1_candidate_attention.ipynb) | Candidate→history attention (+ optional tabular) | Heads × dropout × scorer width grid |
+| [3_Attention/RR_2_nrms.ipynb](3_Attention/RR_2_nrms.ipynb) | NRMS self-attention user encoder (+ optional tabular) | Heads × dropout grid, then loss ablation on the winner |
+| [3_Attention/RR_3_rnn.ipynb](3_Attention/RR_3_rnn.ipynb) | LSTM/GRU user encoder (+ optional tabular) | `RNN_TYPE` × `OBJECTIVE` (BCE+BPR or LambdaNDCG) |
+| [3_Attention/RR_4_branch_interaction.ipynb](3_Attention/RR_4_branch_interaction.ipynb) | One switchable model: news (text, metadata, title) × user (self-attention, position, candidate pooling, short-term GRU) × tabular | Stage 1: 13 architectures with listwise softmax; stage 2: 8 losses (softmax, LambdaNDCG, BCE, BPR + combinations) on the chosen one; stage 3: full training set with early stopping |
+
+The three `3_Attention` notebooks differ only in the **user encoder**. Each has a
+`USE_TABULAR` switch: `True` feeds the causal tabular features to the scorer alongside the
+candidate and user vectors, `False` drops that branch (text + click history only). Run
+each notebook once per setting; its final section compares the two, which shows how much
+the tabular features add on top of the learned user representation.
+
+`RR_4_branch_interaction.ipynb` combines those encoders in one network with every branch
+switchable, and measures how they interact with a ladder (add one branch at a time),
+leave-one-out removals and a tabular × user-encoder 2×2. Stage 1 selects on a fixed
+validation subset (`score_and_evaluate(..., impressions=...)`); finalists and the final
+model are scored on the full split. Its defaults are sized for a laptop and resumable.
 
 Run the popularity notebook first: later notebooks use its validation result as the
 baseline for observed-CTR lift.
@@ -37,8 +47,9 @@ Every model notebook follows the same layout:
 7. **Test**: evaluate only the validation-selected trial
 8. **Recommendations**: rank one user's latest logged slate with the saved scores
 
-Model, data-preparation and training code lives in the notebooks. `rr_evaluation.py` is
-the only shared module.
+Model, data-preparation and training code lives in the notebooks. The shared modules are
+`rr_evaluation.py` (scoring and metrics) and `experiment_naming.py` (self-describing
+artifact names, used by `RR_3_rnn.ipynb`).
 
 ## Shared evaluation module
 
@@ -80,7 +91,8 @@ Every registered metric runs by default; pass `metric_names=` to
 ## Logged slates versus generated candidates
 
 The model notebooks measure *conditional ranking quality on logged slates*, the only
-setting with complete labels. `RR_evaluate_generated_candidates.ipynb` reranks the
+setting with complete labels.
+[`5_03_Pipeline_Evaluation`](../5_03_Pipeline_Evaluation/README.md) reranks the
 candidate generator's output instead; there, unshown articles have unknown relevance and
 count as "not a known click", so always report candidate recall alongside its ranking
 metrics. Retrieval itself is evaluated at Recall@M by
