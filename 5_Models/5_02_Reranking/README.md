@@ -13,25 +13,47 @@ notebook to run it elsewhere (for example on Colab).
 
 | Notebook | Model | Experiments |
 |---|---|---|
-| [1_Baseline/RR_popularity_baseline.ipynb](1_Baseline/RR_popularity_baseline.ipynb) | Causal smoothed article CTR | Fixed rule; validation and test |
-| [1_Baseline/RR_content_similarity_baseline.ipynb](1_Baseline/RR_content_similarity_baseline.ipynb) | Cosine to the user's text / entity history profile | Text, entity and 3 fusion weights |
-| [2_MLP/RR_MLP.ipynb](2_MLP/RR_MLP.ipynb) | Tabular MLP | BCE vs BPR (3 negative samplers) vs BCE–BPR hybrid |
-| [3_Attention/RR_1_candidate_attention.ipynb](3_Attention/RR_1_candidate_attention.ipynb) | Candidate→history attention (+ optional tabular) | Heads × dropout × scorer width grid |
-| [3_Attention/RR_2_nrms.ipynb](3_Attention/RR_2_nrms.ipynb) | NRMS self-attention user encoder (+ optional tabular) | Heads × dropout grid, then loss ablation on the winner |
-| [3_Attention/RR_3_rnn.ipynb](3_Attention/RR_3_rnn.ipynb) | LSTM/GRU user encoder (+ optional tabular) | `RNN_TYPE` × `OBJECTIVE` (BCE+BPR or LambdaNDCG) |
-| [3_Attention/RR_4_branch_interaction.ipynb](3_Attention/RR_4_branch_interaction.ipynb) | One switchable model: news (text, metadata, title) × user (self-attention, position, candidate pooling, short-term GRU) × tabular | Stage 1: 13 architectures with listwise softmax; stage 2: 8 losses (softmax, LambdaNDCG, BCE, BPR + combinations) on the chosen one; stage 3: full training set with early stopping |
+| [1_Baseline/RR_popularity_baseline.ipynb](1_Baseline/RR_popularity_baseline.ipynb) | Causal smoothed article CTR | Fixed rule (no tuning); validation and test |
+| [1_Baseline/RR_content_similarity_baseline.ipynb](1_Baseline/RR_content_similarity_baseline.ipynb) | Cosine to the user's causal text / entity history profile | 5 rules: text, entity, fusion with text weight 0.25 / 0.50 / 0.75 |
+| [2_MLP/RR_MLP.ipynb](2_MLP/RR_MLP.ipynb) | Tabular MLP (256 → 64) | BCE vs BPR with popularity-weighted negatives (α = 0, 0.5, 1.0), then BCE–BPR hybrids (BPR weight 0.25 / 0.50 / 0.75) |
+| [3_Attention/RR_1_candidate_attention.ipynb](3_Attention/RR_1_candidate_attention.ipynb) | Candidate→history multi-head attention (+ optional tabular) | 12-trial grid: heads {1, 4} × dropout {0.1, 0.2, 0.3} × scorer {128-64, 256-128-64} |
+| [3_Attention/RR_2_nrms.ipynb](3_Attention/RR_2_nrms.ipynb) | NRMS self-attention user encoder (+ optional tabular) | 9-trial grid: heads {1, 2, 4} × attention dropout {0, 0.1, 0.2}; then the MLP-style loss / negative-sampling ablation on the winner |
+| [3_Attention/RR_3_rnn.ipynb](3_Attention/RR_3_rnn.ipynb) | LSTM/GRU over the chronological click history (+ optional tabular) | One run per `RNN_TYPE` (`lstm`/`gru`) × `OBJECTIVE` (`bce_bpr` or `lambda_ndcg`@5), trained on all retained training candidates |
+| [3_Attention/RR_4_branch_interaction.ipynb](3_Attention/RR_4_branch_interaction.ipynb) | One switchable model: news (text, metadata, title) × user (self-attention, position, candidate pooling, short-term GRU) × tabular | Stage 1: 13 architectures with listwise softmax; stage 2: 8 losses on the chosen architecture; stage 3: full training set with early stopping |
 
-The three `3_Attention` notebooks differ only in the **user encoder**. Each has a
+The first three `3_Attention` notebooks differ mainly in the **user encoder**. Each has a
 `USE_TABULAR` switch: `True` feeds the causal tabular features to the scorer alongside the
 candidate and user vectors, `False` drops that branch (text + click history only). Run
 each notebook once per setting; its final section compares the two, which shows how much
 the tabular features add on top of the learned user representation.
 
+### Branch interaction study (`RR_4`)
+
 `RR_4_branch_interaction.ipynb` combines those encoders in one network with every branch
-switchable, and measures how they interact with a ladder (add one branch at a time),
-leave-one-out removals and a tabular × user-encoder 2×2. Stage 1 selects on a fixed
-validation subset (`score_and_evaluate(..., impressions=...)`); finalists and the final
-model are scored on the full split. Its defaults are sized for a laptop and resumable.
+switchable, and measures how they interact:
+
+- **2×2, tabular × user encoder**: `text`, `tabular+text`, `text+user`, `tabular+text+user`
+  (plus a `tabular_only` reference)
+- **Ladder**: `+metadata` → `+position` → `+candidate_pooling` → `full`
+- **Leave-one-out**: `full-tabular`, `full-metadata`, `full-position`, `full-candidate_pooling`
+- The trainable title encoder is off by default (`RUN_TITLE_ENCODER = True` adds
+  `full+title_encoder`)
+
+Stage 1 trains every architecture on the same 10k training impressions and ranks them on
+a fixed 20k-impression validation subset (`score_and_evaluate(..., impressions=...)`);
+the top 3 are rescored on full validation. `FINAL_ARCHITECTURE` is pinned to `+metadata`,
+which ties the best full-validation nDCG@10 (0.4499 vs 0.4500) while keeping the
+personalised news and user branches. Stage 2 compares `softmax`, `lambda_ndcg`, `bce`,
+`bpr` and four weighted combinations on that architecture. Stage 3 retrains the chosen
+architecture and loss on every training impression (up to 20 epochs, patience 3 on a 10%
+holdout's nDCG@10), and only that model is scored on test. Every trial is checkpointed,
+so a stopped run resumes with `RESUME = True`.
+
+![Final RR_4 architecture](3_Attention/figures/rr4_final_architecture.png)
+
+The figure shows the final model: `+metadata` (category, subcategory and entity
+embeddings added to the news encoder) with the NRMS user encoder and the tabular branch,
+trained with 0.5 × listwise softmax + 0.5 × LambdaNDCG@10.
 
 Run the popularity notebook first: later notebooks use its validation result as the
 baseline for observed-CTR lift.
@@ -55,8 +77,8 @@ artifact names, used by `RR_3_rnn.ipynb`).
 
 | Function | Purpose |
 |---|---|
-| `score_and_evaluate(predict, split=..., ...)` | Streams a split's feature partitions through a notebook's `predict(frame)`, saves `<split>_scores.parquet`, evaluates it and optionally writes `reranking_<model>_<split>.csv` |
-| `RerankingEvaluator` | Validates a complete scored slate and reports MRR, nDCG@K, Recall@K, click retention, engaged-impression rate and observed CTR |
+| `score_and_evaluate(predict, split=..., ...)` | Streams a split's feature partitions through a notebook's `predict(frame)`, saves `<split>_scores.parquet`, evaluates it and optionally writes `reranking_<model>_<split>.csv`. With `impressions=`, only that subset is scored and files use a `<split>_subset` prefix so they are never mistaken for full-split results |
+| `RerankingEvaluator(..., impressions=None)` | Validates a complete scored slate (optionally restricted to a fixed impression subset) and reports MRR, nDCG@K, Recall@K, click retention, engaged-impression rate and observed CTR |
 | `compare_results(results, baseline_model=...)` | Concatenates result tables or CSVs, adds observed-CTR lift and sorts |
 | `rank_logged_slate(user_code, score_file, ...)` | Shows one user's latest logged slate ranked by a score file |
 | `evaluate_retrieved_candidates(candidates, ...)` | Known-click metrics and candidate recall for generated candidate lists |
