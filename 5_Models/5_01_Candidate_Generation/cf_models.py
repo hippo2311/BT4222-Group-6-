@@ -77,11 +77,15 @@ def load_context(root):
     popularity[1:] = with_popularity["exposures_train"].to_numpy().astype(np.float32)
     popularity[0] = -1.0
 
-    n_users = pl.scan_parquet(processed / "users.parquet").select(pl.len()).collect().item()
     users = pl.read_parquet(processed / "users.parquet", columns=["user_code"])
     codes = users["user_code"].to_numpy()
-    if codes.min() < 0 or codes.max() >= n_users:
-        raise ValueError("user_code is outside the users table")
+    if codes.size == 0:
+        raise ValueError("users table is empty")
+    if codes.min() < 0:
+        raise ValueError("user_code must be non-negative")
+    # Row 0 is reserved for padding/unknown, so the embedding matrix needs
+    # one more row than the largest assigned user_code.
+    n_users = int(codes.max()) + 1
 
     return CFContext(
         n_users=int(n_users),

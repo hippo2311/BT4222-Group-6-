@@ -38,6 +38,6 @@ Raw and processed datasets are excluded from Git. Commit notebooks and code; sha
 
 ## MIND Small data location
 
-The shared prepared splits are in [Group6_MINDsmall](https://drive.google.com/drive/folders/1UAEC9VLoR5-HLciNpWBSwLahOZgthnsq). On this machine the Small data and the in-progress feature build are under `runs/mindsmall-epoch/`; the checkout's root-level processed data is MIND Large. EDA, representation, and candidate-generation notebooks default to that Small run. Set `NEWSREC_ROOT` to another prepared data root when needed. These defaults require the data to be present locally; they do not download the Drive folder.
+The shared prepared splits are in [Group6_MINDsmall](https://drive.google.com/drive/folders/1UAEC9VLoR5-HLciNpWBSwLahOZgthnsq). On this machine the prepared MIND-small data, representations and feature build live at the checkout root. EDA, representation, feature and candidate-generation notebooks default to the checkout root; set `NEWSREC_ROOT` to another prepared data root when needed. These defaults require the data to be present locally; they do not download the Drive folder.
 
-The feature notebook still defaults to the checkout root unless `NEWSREC_ROOT` is set; `run_all.py` uses the checkout root and is not configured for this Small run. do not rerun preparation or rebuild features in `runs/mindsmall-epoch/` while its current build is running. The existing `model-ready` bundle configuration is for the older dataset and must not be used as a Small bundle until a new Small bundle has been published and pinned.
+`run_all.py` also uses the checkout root. The existing `model-ready` bundle configuration is for the older dataset and must not be used as a Small bundle until a new Small bundle has been published and pinned.

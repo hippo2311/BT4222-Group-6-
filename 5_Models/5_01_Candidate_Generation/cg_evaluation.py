@@ -1,393 +1,495 @@
-"""Reusable Recall@M evaluation for candidate-generation models.
-
-Every candidate table uses the same format:
-
-    impression_uid: Int64
-    news_code: Int32
-    cutoff: Int16, 1..C
-
-Each impression must contain exactly C candidates with unique cutoffs and unique
-news codes. Recall ignores the order; ``cutoff`` only defines nested Top-M sets.
-
-Example:
-    from cg_evaluation import CandidateEvaluator
-
-    evaluator = CandidateEvaluator(split="validation")
-    results = evaluator.evaluate(
-        recommendations,
-        model_name="popularity",
-        m_values=(50, 100, 200, 500),
-    )
-"""
+# =============================================================================
+# cg_evaluation.py
+# Shared evaluation for candidate-generation models (popular and niche channels)
+# =============================================================================
+#
+# INPUT: one row per recommended article
+#     impression_uid  Int64
+#     news_code       Int32
+#     cutoff          Int16   rank 1..C (every impression has exactly C rows)
+#
+# OUTPUT: one long table
+#     model, split, m, metric, value, numerator, denominator
+#
+# USAGE:
+#     from cg_evaluation import CandidateEvaluator, wide_table
+#     ev = CandidateEvaluator(split="validation")
+#     res = ev.evaluate_to_csv("validation_top500.parquet", model_name="niche")
+#     wide_table(res)
+#
+# -----------------------------------------------------------------------------
+# DEFINITIONS (all metrics use the Top-M list, i.e. cutoff <= M)
+# -----------------------------------------------------------------------------
+# Hit       : a clicked article that appears in the user's Top-M list.
+#             Only real clicks count; articles never shown are unknown.
+#
+# Popular   : for a request in hour H, the Top-N articles (default 200) by
+#             clicks in the previous completed hour H-1. Ties broken by shows / exposure,
+#             then news_code. Articles with 0 clicks are never popular.
+# Long tail : every article that is not popular for that hour (niche).
+# Cold      : an article never shown in any hour before the click's hour.
+#
+# recall_pooled           total hits / total clicks
+# recall_impression_mean  average of (hits / clicks) per impression with a click
+# hit_rate                impressions with >= 1 hit / all impressions
+# long_tail_recall        hits on long-tail clicks / all long-tail clicks
+# cold_article_recall     hits on cold clicks / all cold clicks
+# novelty_bits            average of -log2((clicks_H-1 + 1) / (total_H-1 + K))
+#                         over recommended articles, K = catalogue size
+#                         (higher = less mainstream)
+# catalogue_coverage      unique recommended articles / available articles
+# personalisation         average Jaccard distance between two users' lists
+#                         (higher = lists differ more between users)
+# =============================================================================
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 
 import numpy as np
 import polars as pl
 
 DEFAULT_M_VALUES = (50, 100, 200, 500)
-REQUIRED_COLUMNS = ("impression_uid", "news_code", "cutoff")
+POPULAR_TOP_N = 200
+MAX_USER_PAIRS = 10_000
 SPLITS = ("train", "validation", "test")
+REQUIRED_COLUMNS = ("impression_uid", "news_code", "cutoff")
+ONE_HOUR = timedelta(hours=1)
+
+OUTPUT_SCHEMA = {
+    "model": pl.String,
+    "split": pl.String,
+    "m": pl.Int64,
+    "metric": pl.String,
+    "value": pl.Float64,
+    "numerator": pl.Float64,
+    "denominator": pl.Float64,
+}
 
 
-@dataclass
-class _PreparedRecommendations:
-    # Validated standard-format candidates plus the common candidate depth.
-    frame: pl.DataFrame
-    max_cutoff: int
+
+# Small helper functions
+
+def _ratio(numerator, denominator):
+    #safe division
+    return float(numerator) / float(denominator) if denominator else float("nan")
 
 
-def _normalise_m_values(m_values):
-    if isinstance(m_values, int):
-        values = (m_values,)
-    else:
-        values = tuple(dict.fromkeys(int(value) for value in m_values))
-    if not values or any(value < 1 for value in values):
+def _to_hour(column="timestamp"):
+    # Round a timestamp down to the start of its hour. Pin the time unit so
+    # shifted hours (hour + ONE_HOUR) keep the same dtype as raw hours.
+    return (
+        pl.col(column)
+        .dt.truncate("1h")
+        .dt.cast_time_unit("us")
+        .alias("hour")
+    )
+
+
+def _clean_m_values(m_values):
+    # Accept 100 or (50, 100, 200); remove duplicates; must be positive.
+    values = (m_values,) if isinstance(m_values, int) else m_values
+    values = tuple(dict.fromkeys(int(v) for v in values))
+    if not values or min(values) < 1:
         raise ValueError("m_values must contain positive integers")
     return values
 
 
-class CandidateEvaluator:
-    """Load one split once, then evaluate any number of candidate models."""
+# -----------------------------------------------------------------------------
+# Evaluator
+# -----------------------------------------------------------------------------
 
-    def __init__(self, root=None, split="validation"):
+class CandidateEvaluator:
+    # Loads one split once, then evaluates any number of models.
+
+    def __init__(self, root=None, split="validation", popular_top_n=POPULAR_TOP_N):
         if split not in SPLITS:
             raise ValueError(f"split must be one of {SPLITS}")
-        self.root = (
-            Path(root).resolve()
-            if root is not None
-            else Path(__file__).resolve().parents[2]
-        )
+
+        # Default root = two folders above this file (the project root).
+        self.root = Path(root).resolve() if root else Path(__file__).resolve().parents[2]
         self.split = split
+        self.popular_top_n = int(popular_top_n)
         self.processed = self.root / "1_Data_Preparation" / "processed"
         self.artifacts = self.root / "3_Representations" / "artifacts"
+
+        # Loaded lazily the first time they are needed.
         self._impressions = None
-        self._positives = None
-        self._relevant_totals = None
         self._availability = None
-        self._eligible_pool_mean = None
-        self._eligible_click_coverage = None
+        self._hourly = None
+        self._clicks = None
+
+    # data related
 
     @property
     def impressions(self):
-        # Every request in the split is part of the evaluation universe.
+        #loads the list of requests (impressions) for the validation split
         if self._impressions is None:
-            frame = pl.read_parquet(
+            self._impressions = pl.read_parquet(
                 self.processed / f"impressions_{self.split}.parquet",
                 columns=["impression_uid", "user_code", "timestamp"],
             )
-            if frame["impression_uid"].n_unique() != frame.height:
-                raise ValueError("Impressions contain duplicate impression_uid values")
-            if frame["impression_uid"].null_count() or frame["timestamp"].null_count():
-                raise ValueError("Impressions contain null keys or timestamps")
-            self._impressions = frame
         return self._impressions
 
     @property
-    def positives(self):
-        # Only observed clicks are ground truth; unshown articles stay unknown.
-        if self._positives is None:
-            frame = (
-                pl.scan_parquet(
-                    self.processed / f"candidates_{self.split}.parquet"
-                )
-                .filter(pl.col("clicked") == 1)
-                .select("impression_uid", "timestamp", "news_code")
-                .collect()
-            )
-            if frame["impression_uid"].null_count() or frame["news_code"].null_count():
-                raise ValueError("Clicked ground truth contains null keys")
-            duplicates = (
-                frame.group_by(["impression_uid", "news_code"])
-                .len()
-                .filter(pl.col("len") > 1)
-                .height
-            )
-            if duplicates:
-                raise ValueError("Clicked ground truth contains duplicate pairs")
-            self._positives = frame
-        return self._positives
-
-    @property
-    def relevant_totals(self):
-        # Per-impression denominator used by the impression-mean recall.
-        if self._relevant_totals is None:
-            self._relevant_totals = self.positives.group_by("impression_uid").agg(
-                pl.len().alias("relevant")
-            )
-        return self._relevant_totals
-
-    @property
     def availability(self):
-        # Earliest observable appearance; used only to filter future candidates.
+        #when each article became available (used for coverage and K).
         if self._availability is None:
-            frame = pl.read_parquet(
+            self._availability = pl.read_parquet(
                 self.artifacts / "article_availability.parquet",
-                columns=["news_code", "available_from"],
+                columns=["available_from"],
             )
-            if frame["news_code"].n_unique() != frame.height:
-                raise ValueError("Availability contains duplicate news_code values")
-            if frame["available_from"].null_count():
-                raise ValueError("Availability contains null available_from values")
-            self._availability = frame
         return self._availability
 
     @property
-    def mean_eligible_pool(self):
-        # Count the eligible catalogue per timestamp, then weight by impressions.
-        if self._eligible_pool_mean is None:
-            available = self.availability["available_from"].sort().to_numpy()
-            timestamps = self.impressions["timestamp"].unique()
-            counts = np.searchsorted(
-                available, timestamps.to_numpy(), side="right"
+    def hourly(self):
+        # Shows and clicks per (hour, article).
+        # Earlier splits are included so the first validation/test hour can
+        # look back at the last hour of the previous split.
+        if self._hourly is None:
+            splits_so_far = SPLITS[: SPLITS.index(self.split) + 1]
+            logs = [
+                pl.scan_parquet(self.processed / f"candidates_{s}.parquet")
+                .select("timestamp", "news_code", "clicked")
+                for s in splits_so_far
+            ]
+            self._hourly = (
+                pl.concat(logs)
+                .with_columns(_to_hour())
+                .group_by("hour", "news_code")
+                .agg(
+                    pl.len().alias("shows"),
+                    pl.col("clicked").cast(pl.Int64).sum().alias("clicks"),
+                )
+                .collect()
             )
-            per_timestamp = pl.DataFrame(
-                {
-                    "timestamp": timestamps,
-                    "eligible_pool": counts.astype(np.int32, copy=False),
-                }
-            )
-            self._eligible_pool_mean = float(
-                self.impressions.select("timestamp")
-                .join(per_timestamp, on="timestamp", how="left")
-                .select(pl.col("eligible_pool").mean())
-                .item()
-            )
-        return self._eligible_pool_mean
+        return self._hourly
 
     @property
-    def eligible_click_coverage(self):
-        # Report eligibility loss without removing clicks from the denominator.
-        if self._eligible_click_coverage is None:
-            joined = self.positives.join(
-                self.availability, on="news_code", how="left"
+    def clicks(self):
+        #collect all clicks and note their hours
+        if self._clicks is None:
+            clicks = (
+                pl.scan_parquet(self.processed / f"candidates_{self.split}.parquet")
+                .filter(pl.col("clicked") == 1)
+                .select("impression_uid", "news_code")
+                .collect()
+                .join(self.impressions.select("impression_uid", "timestamp"),
+                      on="impression_uid")
+                .with_columns(_to_hour())
             )
-            if joined["available_from"].null_count():
-                raise ValueError("Clicked ground truth contains unknown news_code values")
-            covered = joined.filter(
-                pl.col("available_from") <= pl.col("timestamp")
-            ).height
-            self._eligible_click_coverage = (
-                covered / self.positives.height if self.positives.height else float("nan")
-            )
-        return self._eligible_click_coverage
 
-    def _read_recommendations(self, recommendations):
-        # Read only the three standard candidate columns.
+            # Popular in hour H = Top-N by clicks in hour H-1.
+            #sort by no. of clicks, then exposure / shows (tie-breaker), then news_code.
+            popular = (
+                self.hourly.filter(pl.col("clicks") > 0)
+                .sort(["hour", "clicks", "shows", "news_code"],
+                      descending=[False, True, True, False])
+                .group_by("hour", maintain_order=True)
+                .head(self.popular_top_n)
+                .select((pl.col("hour") + ONE_HOUR).alias("hour"), "news_code",
+                        pl.lit(True).alias("is_popular"))
+            )
+
+            # First hour each article was ever shown.
+            first_shown = self.hourly.group_by("news_code").agg(
+                pl.col("hour").min().alias("first_shown")
+            )
+
+            self._clicks = (
+                clicks.join(popular, on=["hour", "news_code"], how="left")
+                .join(first_shown, on="news_code", how="left")
+                .select(
+                    "impression_uid",
+                    "news_code",
+                    # Long tail = not in that hour's popular set.
+                    pl.col("is_popular").is_null().alias("is_long_tail"),
+                    # Cold = not shown in any earlier hour.
+                    (pl.col("first_shown").is_null()
+                     | (pl.col("first_shown") >= pl.col("hour"))).alias("is_cold"),
+                )
+            )
+        return self._clicks
+
+    # input checks
+
+    def _load_recommendations(self, recommendations):
+        # Accept a parquet path or a Polars DataFrame.
         if isinstance(recommendations, (str, Path)):
-            lazy = pl.scan_parquet(recommendations)
-            available_columns = lazy.collect_schema().names()
+            frame = pl.read_parquet(recommendations)
         elif isinstance(recommendations, pl.DataFrame):
-            lazy = None
-            available_columns = recommendations.columns
+            frame = recommendations
         else:
-            raise TypeError(
-                "recommendations must be a Polars DataFrame, str, or Path"
-            )
+            raise TypeError("recommendations must be a Polars DataFrame, str, or Path")
 
-        missing = set(REQUIRED_COLUMNS) - set(available_columns)
+        missing = set(REQUIRED_COLUMNS) - set(frame.columns)
         if missing:
-            raise ValueError(
-                "recommendations are missing required columns: "
-                + ", ".join(sorted(missing))
-            )
-
-        if lazy is not None:
-            return lazy.select(REQUIRED_COLUMNS).collect()
-        return recommendations.select(REQUIRED_COLUMNS)
-
-    def _prepare(self, recommendations):
-        frame = self._read_recommendations(recommendations)
-
+            raise ValueError(f"recommendations are missing columns: {sorted(missing)}")
         if frame.height == 0:
             raise ValueError("recommendations are empty")
-        if frame["impression_uid"].null_count() or frame["news_code"].null_count():
-            raise ValueError("recommendations contain null keys")
-        if frame["cutoff"].null_count():
-            raise ValueError("recommendations contain null cutoffs")
-        if (frame["cutoff"] < 1).any():
-            raise ValueError("cutoff values must be positive")
+        return frame.select(REQUIRED_COLUMNS)
 
-        # Every impression must have the same contiguous cutoff depth C.
-        max_cutoff = int(frame["cutoff"].max())
-        shape = frame.group_by("impression_uid").agg(
-            pl.len().alias("n_candidates"),
-            pl.col("cutoff").min().alias("min_cutoff"),
-            pl.col("cutoff").max().alias("max_cutoff"),
-            pl.col("cutoff").n_unique().alias("n_unique_cutoffs"),
-            pl.col("news_code").n_unique().alias("n_unique_news"),
-        )
-        invalid = shape.filter(
-            (pl.col("n_candidates") != max_cutoff)
-            | (pl.col("min_cutoff") != 1)
-            | (pl.col("max_cutoff") != max_cutoff)
-            | (pl.col("n_unique_cutoffs") != max_cutoff)
-            | (pl.col("n_unique_news") != max_cutoff)
-        )
-        if invalid.height:
-            raise ValueError(
-                f"invalid candidate cutoffs for {invalid.height} impressions"
+    def _select_impressions(self, impression_uids):
+        # All impressions in the split, or only the requested subset.
+        if impression_uids is None:
+            return self.impressions
+
+        if isinstance(impression_uids, pl.DataFrame):
+            requested = impression_uids.select("impression_uid")
+        else:
+            requested = pl.DataFrame(
+                {"impression_uid": np.asarray(impression_uids, dtype=np.int64)}
             )
 
-        # Candidates must cover exactly the split's impression set.
-        known_impressions = self.impressions.select("impression_uid")
-        unknown_impressions = frame.join(
-            known_impressions, on="impression_uid", how="anti"
-        ).height
-        if unknown_impressions:
-            raise ValueError(
-                f"{unknown_impressions} candidates use unknown impression_uid values"
+        if requested.height == 0:
+            raise ValueError("impression_uids is empty")
+        if requested["impression_uid"].n_unique() != requested.height:
+            raise ValueError("impression_uids contains duplicates")
+
+        subset = self.impressions.join(requested, on="impression_uid")
+        if subset.height != requested.height:
+            raise ValueError("some impression_uids are not in the split")
+        return subset
+
+    def _check_shape(self, frame, impressions):
+        # Every impression needs exactly C rows: cutoffs 1..C, no duplicate articles.
+        depth = int(frame["cutoff"].max())
+        bad = (
+            frame.group_by("impression_uid")
+            .agg(
+                pl.len().alias("rows"),
+                pl.col("cutoff").min().alias("first"),
+                pl.col("cutoff").n_unique().alias("ranks"),
+                pl.col("news_code").n_unique().alias("articles"),
             )
-        missing_impressions = known_impressions.join(
-            frame.select("impression_uid").unique(),
-            on="impression_uid",
-            how="anti",
-        ).height
-        if missing_impressions:
-            raise ValueError(
-                f"missing recommendations for {missing_impressions} impressions"
-            )
-
-        # Reject article codes outside the catalogue.
-        unknown_news = frame.join(
-            self.availability.select("news_code"), on="news_code", how="anti"
-        ).height
-        if unknown_news:
-            raise ValueError(f"{unknown_news} candidates use unknown news_code values")
-
-        # Guard against articles first observed after the request.
-        with_availability = frame.join(
-            self.impressions.select("impression_uid", "timestamp"),
-            on="impression_uid",
-            how="left",
-        ).join(self.availability, on="news_code", how="left")
-        ineligible = with_availability.filter(
-            pl.col("available_from") > pl.col("timestamp")
-        ).height
-        if ineligible:
-            raise ValueError(f"{ineligible} ineligible candidates are not yet available")
-
-        return _PreparedRecommendations(frame=frame, max_cutoff=max_cutoff)
-
-    def evaluate(
-        self,
-        recommendations,
-        *,
-        model_name,
-        m_values=DEFAULT_M_VALUES,
-    ):
-        # All M values slice the same validated Top-C artifact.
-        m_values = _normalise_m_values(m_values)
-        requested_max = max(m_values)
-        prepared = self._prepare(recommendations)
-        if prepared.max_cutoff < requested_max:
-            raise ValueError(
-                f"recommendations only provide cutoff {prepared.max_cutoff}; "
-                f"cannot evaluate M={requested_max}"
-            )
-
-        rows = [self._metrics_at(prepared, m, model_name) for m in m_values]
-        return pl.DataFrame(rows)
-
-    def _metrics_at(self, prepared, m, model_name):
-        selected = prepared.frame.filter(pl.col("cutoff") <= m)
-
-        # Hits are observed clicks found in the selected Top-M set.
-        hits = (
-            self.positives.select("impression_uid", "news_code")
-            .join(
-                selected.select("impression_uid", "news_code"),
-                on=["impression_uid", "news_code"],
-                how="inner",
-            )
-            .group_by("impression_uid")
-            .agg(pl.len().alias("hits"))
-        )
-        candidate_counts = (
-            self.impressions.select("impression_uid")
-            .join(
-                selected.group_by("impression_uid").agg(
-                    pl.len().alias("n_candidates")
-                ),
-                on="impression_uid",
-                how="left",
-            )
-            .select(
-                "impression_uid",
-                pl.col("n_candidates").fill_null(0).cast(pl.Int64),
+            .filter(
+                (pl.col("rows") != depth) | (pl.col("first") != 1)
+                | (pl.col("ranks") != depth) | (pl.col("articles") != depth)
             )
         )
+        if bad.height:
+            raise ValueError(f"invalid candidate cutoffs for {bad.height} impressions")
 
-        # Anchor on all impressions; a missing hit becomes zero recall.
+        # Recommendations must cover exactly the evaluated impressions.
+        known = impressions.select("impression_uid")
+        given = frame.select("impression_uid").unique()
+        unknown = given.join(known, on="impression_uid", how="anti").height
+        missing = known.join(given, on="impression_uid", how="anti").height
+        if unknown:
+            raise ValueError(f"{unknown} impression_uids are not in the split")
+        if missing:
+            raise ValueError(f"missing recommendations for {missing} impressions")
+        return depth
+
+    # evaluation metrics
+
+    #recall-related metrics
+    def _recall_metrics(self, clicks, impressions, m):
+        # clicks has a 'cutoff' column: the click's rank in the list (null = absent).
+        clicks = clicks.with_columns(
+            (pl.col("cutoff").fill_null(m + 1) <= m).alias("hit")
+        )
+
         per_impression = (
-            self.impressions.select("impression_uid")
-            .join(self.relevant_totals, on="impression_uid", how="left")
-            .with_columns(pl.col("relevant").fill_null(0).cast(pl.Int64))
-            .join(hits, on="impression_uid", how="left")
-            .with_columns(pl.col("hits").fill_null(0).cast(pl.Int64))
-            .join(candidate_counts, on="impression_uid", how="left")
-            .with_columns(pl.col("n_candidates").fill_null(0).cast(pl.Int64))
+            impressions.select("impression_uid")
+            .join(clicks.group_by("impression_uid").agg(
+                      pl.len().alias("clicks"), pl.col("hit").sum().alias("hits")),
+                  on="impression_uid", how="left")
+            .fill_null(0)
         )
 
-        impressions = per_impression.height
-        relevant_clicks = int(per_impression["relevant"].sum())
-        retrieved_relevant = int(per_impression["hits"].sum())
-        # Equal weight per impression; the pooled value is reported separately.
-        with_relevant = per_impression.filter(pl.col("relevant") > 0)
-        recall_impression_mean = (
-            float((with_relevant["hits"] / with_relevant["relevant"]).mean())
-            if with_relevant.height
-            else float("nan")
+        #recall_pooled: total hits / total clicks
+        total_clicks = per_impression["clicks"].sum()
+        total_hits = per_impression["hits"].sum()
+
+        #recall_impression_mean: average of hits / clicks per impression with a click
+        clicked = per_impression.filter(pl.col("clicks") > 0)
+        impression_mean = (clicked["hits"] / clicked["clicks"]).mean()
+
+        #hit_rate: impressions with at least 1 hit / all impressions
+        hit_impressions = (per_impression["hits"] > 0).sum()
+
+        #long_tail_recall: recall on clicks for non-popular articles only
+        tail = clicks.filter("is_long_tail")
+
+        #cold_article_recall: recall on clicks for never-shown-before articles only
+        cold = clicks.filter("is_cold")
+
+        # (metric, value, numerator, denominator)
+        return [
+            ("recall_pooled", _ratio(total_hits, total_clicks), total_hits, total_clicks),
+            ("recall_impression_mean", impression_mean, None, clicked.height),
+            ("hit_rate", _ratio(hit_impressions, per_impression.height),
+             hit_impressions, per_impression.height),
+            ("long_tail_recall", _ratio(tail["hit"].sum(), tail.height),
+             tail["hit"].sum(), tail.height),
+            ("cold_article_recall", _ratio(cold["hit"].sum(), cold.height),
+             cold["hit"].sum(), cold.height),
+        ]
+
+    #novelty_bits: how unpopular the recommended articles were last hour (a score for how rare an article is, based on its share of last hour’s clicks:)
+    def _novelty_per_row(self, frame, impressions):
+        # Novelty (bits) of every recommended row, using clicks in hour H-1.
+        # +1 / +K smoothing so articles with 0 clicks still get a finite value.
+        catalogue_size = self.availability.height
+        prev_hour = self.hourly.select(
+            (pl.col("hour") + ONE_HOUR).alias("hour"), "news_code", "clicks"
         )
-        hit_rate = (
-            per_impression.select((pl.col("hits") > 0).sum()).item() / impressions
-            if impressions
-            else float("nan")
+        hour_totals = prev_hour.group_by("hour").agg(pl.col("clicks").sum().alias("total"))
+
+        return (
+            frame.join(impressions.select("impression_uid", _to_hour()), on="impression_uid")
+            .join(prev_hour, on=["hour", "news_code"], how="left")
+            .join(hour_totals, on="hour", how="left")
+            .select(
+                "cutoff",
+                -((pl.col("clicks").fill_null(0) + 1)
+                  / (pl.col("total").fill_null(0) + catalogue_size)).log(2).alias("bits"),
+            )
         )
+    #coverage = different articles recommended / articles available (how much of the catalogue the model actually uses)
+    def _coverage(self, frame, impressions, m):
+        # Unique recommended articles / articles available by the split's end.
+        recommended = frame.filter(pl.col("cutoff") <= m)["news_code"].n_unique()
+        available = self.availability.filter(
+            pl.col("available_from") <= impressions["timestamp"].max()
+        ).height
+        return _ratio(recommended, available), recommended, available
 
-        return {
-            "model": model_name,
-            "split": self.split,
-            "m": int(m),
-            # Click-weighted recall across the whole split.
-            "recall_pooled": (
-                retrieved_relevant / relevant_clicks
-                if relevant_clicks
-                else float("nan")
-            ),
-            "recall_impression_mean": recall_impression_mean,
-            "hit_rate": hit_rate,
-            "impressions": impressions,
-            "relevant_clicks": relevant_clicks,
-            "retrieved_relevant": retrieved_relevant,
-            "mean_candidates": float(per_impression["n_candidates"].mean()),
-            "mean_eligible_pool": self.mean_eligible_pool,
-            "eligible_click_coverage": self.eligible_click_coverage,
-        }
+    #personalisation: how different the Top-M lists are between users
+    def _personalisation(self, frame, impressions, m, seed):
+        # Average Jaccard distance between Top-M lists of random user pairs.
+        # Each user is represented by their first impression in the split.
+        first = (
+            impressions.sort("user_code", "timestamp", "impression_uid")
+            .group_by("user_code", maintain_order=True)
+            .first()
+            .select("user_code", "impression_uid")
+        )
+        users = np.sort(first["user_code"].to_numpy())
+        n = users.size
+        if n < 2:
+            return float("nan"), 0.0, 0
+
+        # Sample pairs; offsetting by 1..n-1 means a user is never paired with themselves.
+        rng = np.random.default_rng(seed)
+        n_pairs = min(MAX_USER_PAIRS, n * (n - 1) // 2)
+        left = rng.integers(0, n, size=n_pairs)
+        right = (left + rng.integers(1, n, size=n_pairs)) % n
+
+        # Fetch the Top-M list of every sampled user.
+        sampled = np.unique(np.concatenate([users[left], users[right]]))
+        lists = (
+            frame.filter(pl.col("cutoff") <= m)
+            .join(first.filter(pl.col("user_code").is_in(sampled.tolist())),
+                  on="impression_uid")
+            .group_by("user_code")
+            .agg(pl.col("news_code").unique().sort())
+        )
+        user_list = {u: np.asarray(codes) for u, codes in lists.iter_rows()}
+
+        # Jaccard distance = 1 - shared / union.
+        total = 0.0
+        for a_user, b_user in zip(users[left], users[right]):
+            a, b = user_list[a_user], user_list[b_user]
+            shared = np.intersect1d(a, b, assume_unique=True).size
+            total += 1.0 - shared / (a.size + b.size - shared)
+        return total / n_pairs, total, n_pairs
 
 
-def evaluate_candidate_lists(
-    recommendations,
-    *,
-    model_name,
-    split="validation",
-    m_values=DEFAULT_M_VALUES,
-    root=None,
-):
-    evaluator = CandidateEvaluator(root=root, split=split)
-    return evaluator.evaluate(
-        recommendations,
-        model_name=model_name,
-        m_values=m_values,
+    def evaluate(self, recommendations, *, model_name,
+                 m_values=DEFAULT_M_VALUES, impression_uids=None, seed=0):
+        m_values = _clean_m_values(m_values)
+        impressions = self._select_impressions(impression_uids)
+        frame = self._load_recommendations(recommendations)
+
+        depth = self._check_shape(frame, impressions)
+        if depth < max(m_values):
+            raise ValueError(f"lists only go to rank {depth}; cannot evaluate M={max(m_values)}")
+
+        # Computed once, then sliced for each M.
+        ranked_clicks = (
+            self.clicks.join(impressions.select("impression_uid"), on="impression_uid")
+            .join(frame, on=["impression_uid", "news_code"], how="left")
+        )
+        novelty = self._novelty_per_row(frame, impressions)
+
+        rows = []
+        for m in m_values:
+            top_novelty = novelty.filter(pl.col("cutoff") <= m)["bits"]
+            metrics = self._recall_metrics(ranked_clicks, impressions, m)
+            metrics.append(("novelty_bits", top_novelty.mean(),
+                            top_novelty.sum(), top_novelty.len()))
+            metrics.append(("catalogue_coverage", *self._coverage(frame, impressions, m)))
+            metrics.append(("personalisation",
+                            *self._personalisation(frame, impressions, m, seed)))
+
+            for name, value, numerator, denominator in metrics:
+                rows.append({
+                    "model": model_name,
+                    "split": self.split,
+                    "m": m,
+                    "metric": name,
+                    "value": None if value is None else float(value),
+                    "numerator": None if numerator is None else float(numerator),
+                    "denominator": None if denominator is None else float(denominator),
+                })
+
+        return pl.DataFrame(rows, schema=OUTPUT_SCHEMA).sort("m", "metric")
+
+    def evaluate_to_csv(self, recommendations, *, model_name,
+                        m_values=DEFAULT_M_VALUES, output_dir=None,
+                        write_comparison=True, impression_uids=None,
+                        suffix="", seed=0):
+        # Evaluate, save this model's CSV, and update the shared comparison CSV.
+        table = self.evaluate(recommendations, model_name=model_name,
+                              m_values=m_values, impression_uids=impression_uids,
+                              seed=seed)
+
+        output_dir = Path(output_dir) if output_dir else self.root / "results"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        table.write_csv(output_dir / f"candidate_generation_{model_name}_{self.split}{suffix}.csv")
+
+        if write_comparison:
+            update_comparison(
+                table, output_dir / f"candidate_generation_comparison_{self.split}{suffix}.csv"
+            )
+        return table
+
+# Output helpers
+
+def update_comparison(evaluation, comparison_path):
+    # Replace this model's rows in the shared comparison table (others are kept).
+    comparison_path = Path(comparison_path)
+    comparison_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if comparison_path.exists():
+        existing = pl.read_csv(comparison_path)
+        if set(OUTPUT_SCHEMA) <= set(existing.columns):
+            models = evaluation["model"].unique().to_list()
+            existing = existing.filter(~pl.col("model").is_in(models))
+            evaluation = pl.concat(
+                [existing.select(list(OUTPUT_SCHEMA)), evaluation], how="vertical_relaxed"
+            )
+
+    evaluation.sort("model", "m", "metric").write_csv(comparison_path)
+    return comparison_path
+
+
+def wide_table(evaluation):
+    # One row per (model, m), one column per metric. Easier to read.
+    return (
+        evaluation.pivot(on="metric", index=["model", "split", "m"], values="value")
+        .sort("model", "m")
     )
 
 
 __all__ = [
     "CandidateEvaluator",
     "DEFAULT_M_VALUES",
-    "REQUIRED_COLUMNS",
-    "evaluate_candidate_lists",
+    "OUTPUT_SCHEMA",
+    "POPULAR_TOP_N",
+    "update_comparison",
+    "wide_table",
 ]
