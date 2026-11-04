@@ -49,14 +49,6 @@ architecture and loss on every training impression (up to 20 epochs, patience 3 
 holdout's nDCG@10), and only that model is scored on test. Every trial is checkpointed,
 so a stopped run resumes with `RESUME = True`.
 
-![Final RR_4 architecture](3_Attention/figures/rr4_final_architecture.png)
-
-The figure shows the final model: `+metadata` (category, subcategory and entity
-embeddings added to the news encoder) with the NRMS user encoder and the tabular branch,
-trained with 0.5 × listwise softmax + 0.5 × LambdaNDCG@10.
-
-Run the popularity notebook first: later notebooks use its validation result as the
-baseline for observed-CTR lift.
 
 Every model notebook follows the same layout:
 
