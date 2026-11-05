@@ -19,9 +19,7 @@ __pycache__/
 .venv/
 .pytest_cache/
 .ruff_cache/
-3_Representations/artifacts/
-4_Feature_Engineering/artifacts/
-5_Models/5_01_Candidate_Generation/artifacts/
+artifacts/
 results/
 
 # Legacy executed copies (new runs update source notebooks in place)

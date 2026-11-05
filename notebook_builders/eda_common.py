@@ -64,7 +64,7 @@ from scipy import stats
 
 # Project root = the folder that contains 1_Data_Preparation/processed (written by 1. data_preparation.ipynb)
 CODE_ROOT = next(p for p in (Path.cwd(), *Path.cwd().parents) if (p / "run_all.py").is_file())
-ROOT = Path(os.environ.get("NEWSREC_ROOT", CODE_ROOT / "runs/mindsmall-epoch")).expanduser().resolve()
+ROOT = Path(os.environ.get("NEWSREC_ROOT", CODE_ROOT)).expanduser().resolve()
 PROCESSED = ROOT / "1_Data_Preparation" / "processed"
 FIG_DIR = ROOT / "2_EDA" / "figures"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
