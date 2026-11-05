@@ -25,7 +25,7 @@
 #
 # Popular   : for a request in hour H, the Top-N articles (default 200) by
 #             clicks in the previous completed hour H-1. Ties broken by shows / exposure,
-#             then news_code. Articles with 0 clicks are never popular.
+#             then news_code.
 # Long tail : every article that is not popular for that hour (niche).
 # Cold      : an article never shown in any hour before the click's hour.
 #
@@ -77,14 +77,8 @@ def _ratio(numerator, denominator):
 
 
 def _to_hour(column="timestamp"):
-    # Round a timestamp down to the start of its hour. Pin the time unit so
-    # shifted hours (hour + ONE_HOUR) keep the same dtype as raw hours.
-    return (
-        pl.col(column)
-        .dt.truncate("1h")
-        .dt.cast_time_unit("us")
-        .alias("hour")
-    )
+    #round a timestamp down to the start of its hour 
+    return pl.col(column).dt.truncate("1h").alias("hour")
 
 
 def _clean_m_values(m_values):
@@ -138,7 +132,7 @@ class CandidateEvaluator:
         if self._availability is None:
             self._availability = pl.read_parquet(
                 self.artifacts / "article_availability.parquet",
-                columns=["available_from"],
+                columns=["news_code", "available_from"],
             )
         return self._availability
 
@@ -180,16 +174,23 @@ class CandidateEvaluator:
                 .with_columns(_to_hour())
             )
 
-            # Popular in hour H = Top-N by clicks in hour H-1.
-            #sort by no. of clicks, then exposure / shows (tie-breaker), then news_code.
+            # Popular in hour H = the popular channel's top-N list for hour H:
+            # every article available by the end of hour H, ranked by clicks in H-1, then shows in H-1, then news_code.
+            request_hours = clicks.select("hour").unique()
+            prev_counts = self.hourly.select(
+                (pl.col("hour") + ONE_HOUR).alias("hour"), "news_code", "clicks", "shows"
+            )
             popular = (
-                self.hourly.filter(pl.col("clicks") > 0)
+                request_hours.join(self.availability, how="cross")
+                .filter(pl.col("available_from") <= pl.col("hour") + ONE_HOUR)
+                .join(prev_counts, on=["hour", "news_code"], how="left")
+                .with_columns(pl.col("clicks", "shows").fill_null(0))
+                # sort by no. of clicks, then exposure / shows (tie-breaker), then news_code.
                 .sort(["hour", "clicks", "shows", "news_code"],
                       descending=[False, True, True, False])
                 .group_by("hour", maintain_order=True)
                 .head(self.popular_top_n)
-                .select((pl.col("hour") + ONE_HOUR).alias("hour"), "news_code",
-                        pl.lit(True).alias("is_popular"))
+                .select("hour", "news_code", pl.lit(True).alias("is_popular"))
             )
 
             # First hour each article was ever shown.
