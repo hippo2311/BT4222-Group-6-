@@ -1,8 +1,9 @@
 """Shared candidate-generation data access and user-item matrix.
 
-The static binary user-item matrix is reused by the item-item CF baseline and
-the neural candidate generators. Model-specific neighbour construction,
-scoring and candidate selection live in the corresponding notebooks.
+The static binary user-item matrix is used by the item-item CF baseline.
+`load_context` and `resolve_device` are shared with the neural candidate
+generators. Model-specific neighbour construction, scoring and candidate
+selection live in the corresponding notebooks.
 """
 
 from __future__ import annotations
