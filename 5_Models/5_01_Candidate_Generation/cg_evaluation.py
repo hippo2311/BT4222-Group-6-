@@ -78,7 +78,7 @@ def _ratio(numerator, denominator):
 
 def _to_hour(column="timestamp"):
     #round a timestamp down to the start of its hour 
-    return pl.col(column).dt.truncate("1h").alias("hour")
+    return pl.col(column).dt.truncate("1h").cast(pl.Datetime("ns")).alias("hour")
 
 
 def _clean_m_values(m_values):
@@ -118,7 +118,7 @@ class CandidateEvaluator:
 
     @property
     def impressions(self):
-        #loads the list of requests (impressions) for the validation split
+        # Loads the list of requests (impressions) for the configured split.
         if self._impressions is None:
             self._impressions = pl.read_parquet(
                 self.processed / f"impressions_{self.split}.parquet",
@@ -178,7 +178,8 @@ class CandidateEvaluator:
             # every article available by the end of hour H, ranked by clicks in H-1, then shows in H-1, then news_code.
             request_hours = clicks.select("hour").unique()
             prev_counts = self.hourly.select(
-                (pl.col("hour") + ONE_HOUR).alias("hour"), "news_code", "clicks", "shows"
+                (pl.col("hour") + ONE_HOUR).cast(pl.Datetime("ns")).alias("hour"),
+                "news_code", "clicks", "shows"
             )
             popular = (
                 request_hours.join(self.availability, how="cross")
@@ -335,7 +336,7 @@ class CandidateEvaluator:
         # +1 / +K smoothing so articles with 0 clicks still get a finite value.
         catalogue_size = self.availability.height
         prev_hour = self.hourly.select(
-            (pl.col("hour") + ONE_HOUR).alias("hour"), "news_code", "clicks"
+            (pl.col("hour") + ONE_HOUR).cast(pl.Datetime("ns")).alias("hour"), "news_code", "clicks"
         )
         hour_totals = prev_hour.group_by("hour").agg(pl.col("clicks").sum().alias("total"))
 
