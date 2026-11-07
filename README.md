@@ -1,30 +1,21 @@
 # BT4222 Group 6 — News Recommendation
 
-This repository contains our MIND news recommendation work. The current data preparation notebook uses **MIND-small**. Some EDA, representation, and model notebooks were developed with **MIND-large**; rerun and check their results before reporting them for MIND-small.
+This project builds and evaluates a news recommendation pipeline using **MIND-small**. We have already prepared the data, article and user representations, and ranking features, so you can start with the models in stage 5.
 
-## Prepare MIND-small
+## Project structure
 
-1. Open [1. data_preparation.ipynb](<1_Data_Preparation/1. data_preparation.ipynb>) in Google Colab.
-2. Run the cells in order. The notebook downloads `MINDsmall_train` from Kaggle, inspects and parses it, assigns integer IDs, and splits impressions by date.
-3. Run the final cell to upload the outputs to the shared Google Drive folder. It creates `Group6_MINDsmall/train`, `validation`, and `test`.
-
-The `test` split is the last day of **MINDsmall_train**, not the official MIND-small dev release. See [data preparation details](1_Data_Preparation/README.md) for the split dates and file layout.
-
-## Use the prepared data
-
-The notebook writes local `train/`, `validation/`, and `test/` folders, plus `1_Data_Preparation/processed/`. The EDA and downstream code read the processed impression, candidate, user, and news tables. The split folders preserve the corresponding behavior, news, and embedding files.
-
-| Stage | Location |
+| Stage | Purpose |
 |---|---|
-| Data preparation | [1_Data_Preparation](1_Data_Preparation/README.md) |
-| Exploratory analysis | [2_EDA](2_EDA/README.md) |
-| News and user representations | [3_Representations](3_Representations/README.md) |
-| Ranking features | [4_Feature_Engineering](4_Feature_Engineering/README.md) |
-| Candidate generation baselines | [5_Models/5_01_Candidate_Generation](5_Models/5_01_Candidate_Generation/README.md) |
+| [1_Data_Preparation](1_Data_Preparation/README.md) | Download, clean and split MIND-small. |
+| [2_EDA](2_EDA/README.md) | Explore the data. |
+| [3_Representations](3_Representations/README.md) | Build article vectors and user profiles. |
+| [4_Feature_Engineering](4_Feature_Engineering/README.md) | Build the features and labels used for ranking. |
+| [5_Models](5_Models/) | Develop [candidate generators](5_Models/5_01_Candidate_Generation/README.md), [rerankers](5_Models/5_02_Reranking/README.md), and [evaluate the pipeline](5_Models/5_03_Pipeline_Evaluation/README.md). |
+| [src/newsrec](src/newsrec/README.md) | Shared pipeline and model utilities. |
 
-## Local setup
+## Get started with the existing artifacts
 
-Use Python 3.12 from the repository root:
+From the repository root, set up Python 3.12 and install the dependencies:
 
 ```bash
 python3.12 -m venv .venv
@@ -32,12 +23,27 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-The preparation notebook imports `google.colab`, so run it in Colab. The older `run_all.py` and notebook builder for stage 1 still target the former MIND-large preparation flow; do not use them to regenerate the MIND-small notebook. Existing MIND-large model artifacts and their download instructions are documented in [ARTIFACTS.md](ARTIFACTS.md).
+The `model-ready` bundle contains the processed MIND-small data, representations, and completed ranking features. [artifact_bundles.json](artifact_bundles.json) pins the `v3-mindsmall` version, Google Drive folder, and manifest checksum. Download and verify it with:
 
-Raw and processed datasets are excluded from Git. Commit notebooks and code; share large data through the team's Drive folder.
+```bash
+python download_artifacts.py --bundle model-ready
+python download_artifacts.py --bundle model-ready --verify-only
+```
 
-## MIND Small data location
+The script restores files into `1_Data_Preparation/processed/`, `3_Representations/artifacts/`, and `4_Feature_Engineering/artifacts/prequential-all/`. It checks hashes and refuses to overwrite conflicting files. The package was restored successfully from a local copy, but its upload to Drive and remote download have not been confirmed. If the download reports missing files or access errors, ask the bundle owner to upload or share the complete `v3-mindsmall` folder. If you have that folder locally, install it with:
 
-The shared prepared splits are in [Group6_MINDsmall](https://drive.google.com/drive/folders/1UAEC9VLoR5-HLciNpWBSwLahOZgthnsq). On this machine the prepared MIND-small data, representations and feature build live at the checkout root. EDA, representation, feature and candidate-generation notebooks default to the checkout root; set `NEWSREC_ROOT` to another prepared data root when needed. These defaults require the data to be present locally; they do not download the Drive folder.
+```bash
+python download_artifacts.py --bundle model-ready --local-package /path/to/v3-mindsmall
+```
 
-`run_all.py` also uses the checkout root. The existing `model-ready` bundle configuration is for the older dataset and must not be used as a Small bundle until a new Small bundle has been published and pinned.
+The folder must contain `bundle_manifest.json`, `processed.zip`, `representations.zip`, and `ranking_features.zip`. The bundle does not contain the raw split folders.
+
+Then start with [candidate generation](5_Models/5_01_Candidate_Generation/README.md), continue to [reranking](5_Models/5_02_Reranking/README.md), and use [pipeline evaluation](5_Models/5_03_Pipeline_Evaluation/README.md) to evaluate the combined system. Check each notebook's data paths before running; the reranking notebooks in particular require `DATA_ROOT` and `PROJECT_ROOT` to be set for your machine. The feature schema lists the model input columns; see the [feature README](4_Feature_Engineering/README.md) for training and label details.
+
+## Reproduce the artifacts
+
+1. Run the [data preparation notebook](<1_Data_Preparation/1. data_preparation.ipynb>) in Colab. Place its local `train/`, `validation/`, `test/`, and `1_Data_Preparation/processed/` outputs under the same data root. The [shared prepared splits](https://drive.google.com/drive/folders/1UAEC9VLoR5-HLciNpWBSwLahOZgthnsq) are also available, but the Drive upload layout alone does not recreate the local `processed/` directory.
+2. Set `NEWSREC_ROOT` to that data root, then run the three [representation notebooks](3_Representations/README.md) in order.
+3. Run the [feature engineering notebook](4_Feature_Engineering/README.md), setting `FULL_RUN = True` for the complete dataset. Outputs are written under the same data root.
+
+For example, when the data root is the checkout, launch Jupyter after `export NEWSREC_ROOT="$PWD"`. The preparation notebook requires Colab; the older stage-1 `run_all.py` flow targets a different preparation notebook. The MIND-small test split is the final day of `MINDsmall_train`, not the official dev release. Large data and generated artifacts are excluded from Git.

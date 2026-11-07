@@ -1,13 +1,13 @@
 # 3. Article and user representations
 
-Run these notebooks in order after data preparation.
+These notebooks turn the prepared MIND-small data into article vectors and user profiles for feature engineering and modeling. The completed outputs are included in the model-ready bundle; see the [project README](../README.md) to download them.
 
-| Notebook | What it does | Main outputs in `artifacts/` |
-|---|---|---|
-| [3_01_news_embeddings.ipynb](3_01_news_embeddings.ipynb) | Fits training-only TF-IDF/SVD and frozen title/abstract transformations; builds fused article text vectors, category mappings and title-token inputs; reports vocabulary coverage and neighbours. | `article_index.parquet`, `title64.npy`, `abstract64.npy`, `text64.npy`, title-token IDs/masks/vocabulary, text diagnostics and manifest |
-| [3_02_entity_embeddings.ipynb](3_02_entity_embeddings.ipynb) | Parses article entities, pools valid canonical pretrained entity vectors, records missing-vector fallbacks, and measures article/event-weighted coverage. | `article_entity100.npy`, entity mappings/links/quality, `article_fallback.parquet`, `usage_coverage.csv` and manifest |
-| [3_03_user_profiles.ipynb](3_03_user_profiles.ipynb) | Establishes observation-time article eligibility, pools supplied histories, and demonstrates causal text/entity/recent and category-interest profiles using earlier feedback. | `article_availability.parquet`, `supplied_*_profiles.npy`, supplied-profile index, manifests and profile checks |
+To rebuild, prepare the data first, set `NEWSREC_ROOT` to the directory containing `1_Data_Preparation/processed/` and the split folders, and run these notebooks in order:
 
-All arrays share the article-row mapping; row 0 is padding. Text and entity vectors use separate spaces. Eligibility is based on observable discovery, not publication time. Static supplied profiles contain no logged feedback; causal pooled profiles use full prior history, with capped sequence references and a separate recent view.
+| Notebook | Output |
+|---|---|
+| [3_01_news_embeddings.ipynb](3_01_news_embeddings.ipynb) | Article index, text vectors, categories and title tokens. Text transformations are fitted on training data. |
+| [3_02_entity_embeddings.ipynb](3_02_entity_embeddings.ipynb) | Article entity vectors, mappings and coverage reports. |
+| [3_03_user_profiles.ipynb](3_03_user_profiles.ipynb) | Article availability and supplied-history profiles, with causal profile examples. |
 
-Execution, cache controls and data locations are described in the [project README](../README.md).
+Outputs are saved to `3_Representations/artifacts/` under the data root. The notebooks can also use their `DATA_ROOT` setting; explicitly setting the root avoids their local fallback path. Set `REBUILD = True` when you deliberately need to replace cached outputs. Article arrays use the same row mapping, with row 0 reserved for padding. Continue to [feature engineering](../4_Feature_Engineering/README.md).
