@@ -1,36 +1,37 @@
 # 1. Reranker-only evaluation (logged MIND slates)
 
-[PE_RR_logged_slates.ipynb](PE_RR_logged_slates.ipynb) reorders the exact slates MIND logged
-and compares three rerankers on validation and test:
+[PE_RR_logged_slates.ipynb](PE_RR_logged_slates.ipynb) reorders the exact slates MIND logged and
+compares three rerankers on the test split:
 
 | Model | Type |
 |---|---|
-| `popularity_smoothed_prior_article_ctr` | Rule baseline (causal smoothed article CTR) |
-| `content_entity_cosine` | Rule baseline (entity cosine to the causal click profile) |
-| `branch_plus_metadata__softmax_plus_lambda_ndcg__full_data` | Selected RR_4 model, loaded from its checkpoint |
+| `popularity_smoothed_prior_article_ctr` | Rule baseline: causal smoothed article CTR |
+| `content_entity_cosine` | Rule baseline: entity cosine to the causal click profile |
+| `attention_reranker` | RR4 `+metadata`, `softmax+lambda_ndcg`, trained in the notebook |
 
-Nothing is trained. The notebook checks every input exists, inspects the slates, histories and
-article vectors, scores all models with `rr_evaluation.py`, verifies the selected model
-reproduces its RR_4 metrics, and breaks results down by the user's prior click count.
+The notebook:
 
-## Inputs (under `DATA_ROOT`)
+1. checks every input exists;
+2. inspects the slates, click histories and article vectors;
+3. trains RR4 the same way as stage 3 of `RR_4_branch_interaction.ipynb`, or loads the saved
+   checkpoint;
+4. scores all models with `rr_evaluation.py`;
+5. compares RR4 with the metrics the RR_4 notebook recorded;
+6. breaks the results down by the user's prior click count.
 
-Set `ENVIRONMENT = "colab"` to read these from `MyDrive/v3-mindsmall`; the layout is the same
-as local.
+It runs on Colab or locally without edits; see the [5_03 README](../README.md#on-google-colab).
 
-- `4_Feature_Engineering/artifacts/prequential-all/`: `feature_schema.json`,
-  `ranking_features_{validation,test}/`, `labels_{validation,test}/`,
-  `request_profiles_{validation,test}/`
+## Inputs (under the project folder)
+
+- `4_Feature_Engineering/artifacts/prequential-all/`: `feature_schema.json`, and
+  `ranking_features_*`, `labels_*` and `request_profiles_*` for `train` and the target split
 - `3_Representations/artifacts/`: `article_index.parquet`, `text64.npy`, `article_entity100.npy`
-- `5_Models/5_02_Reranking/artifacts/branch_interaction/`: `preprocessor.joblib`,
-  `branch_plus_metadata__softmax_plus_lambda_ndcg__full_data/model.pt`
-
-The repository (`PROJECT_ROOT`) supplies `5_Models/5_02_Reranking/rr_evaluation.py`.
+- `5_Models/5_02_Reranking/rr_evaluation.py`
 
 ## Outputs
 
-- Score files: `DATA_ROOT/5_Models/5_03_Pipeline_Evaluation/artifacts/1_RR_only/<model>/<split>_scores.parquet`
-- Metrics: `DATA_ROOT/results/pe_rr_only_overall.csv`, `pe_rr_only_by_history.csv`,
-  `pe_rr_only_metadata.json`
-
-A full local run takes under two minutes on an M-series Mac (MPS).
+- `5_Models/5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/reranker/model.pt` and
+  `preprocessor.joblib`, reused on the next run while the settings match
+- `5_Models/5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/scores/<model>_<split>_scores.parquet`
+- `results/rr_only_logged_slates_<split>.csv`, `rr_only_logged_slates_<split>_by_history.csv`
+  and `rr_only_logged_slates_<split>.json`
