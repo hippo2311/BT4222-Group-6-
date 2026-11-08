@@ -1,10 +1,15 @@
 """Shared pieces for the 2_EDA notebook builders. Style follows BT4222-Group-10/2_eda.ipynb: pandas only,
 print() summaries, numbered step comments, markdown with findings and model implications."""
+
 import re
-import nbformat as nbf
 from pathlib import Path
 
-HEADER_RE = re.compile(r"^(\s*)((?:for|if|elif|else|while|with|try|except|finally|def)\b[^;]*?:)\s*(\S.*)$")
+import nbformat as nbf
+
+HEADER_RE = re.compile(
+    r"^(\s*)((?:for|if|elif|else|while|with|try|except|finally|def)\b[^;]*?:)\s*(\S.*)$"
+)
+
 
 def _split_statements(line):
     """Split one source line at semicolons that sit outside strings and brackets."""
@@ -26,7 +31,8 @@ def _split_statements(line):
         elif ch == "#" and depth == 0:
             break
         elif ch == ";" and depth == 0:
-            parts.append(line[start:i]); start = i + 1
+            parts.append(line[start:i])
+            start = i + 1
         i += 1
     parts.append(line[start:])
     return [p for p in parts if p.strip()]
@@ -41,13 +47,14 @@ def one_statement_per_line(src):
             continue
         indent = re.match(r"\s*", line).group(0)
         m = HEADER_RE.match(parts[0])
-        if m:                      # "for x in y: a; b" -> header line, then indented a and b
+        if m:  # "for x in y: a; b" -> header line, then indented a and b
             out.append(m.group(1) + m.group(2))
             out.append(indent + "    " + m.group(3).strip())
             out.extend(indent + "    " + p.strip() for p in parts[1:])
         else:
             out.extend(indent + p.strip() for p in parts)
     return "\n".join(out)
+
 
 EDA_DIR = Path(__file__).resolve().parent.parent / "2_EDA"
 
@@ -79,8 +86,14 @@ print("Project root:", ROOT)
 def write_notebook(name, cells):
     nb = nbf.v4.new_notebook()
     nb["cells"] = cells
-    nb["metadata"] = {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
-                      "language_info": {"name": "python"}}
+    nb["metadata"] = {
+        "kernelspec": {
+            "display_name": "Python 3",
+            "language": "python",
+            "name": "python3",
+        },
+        "language_info": {"name": "python"},
+    }
     EDA_DIR.mkdir(parents=True, exist_ok=True)
     out = EDA_DIR / f"{name}.ipynb"
     nbf.write(nb, out)
@@ -102,7 +115,7 @@ def split_plots(src):
     cells = ["\n".join(lines[:idx]).rstrip()]
     suffix = PLOT_RE.match(lines[idx]).group(1).strip()
     chunks, cur = [], []
-    for line in lines[idx + 1:]:
+    for line in lines[idx + 1 :]:
         if line.strip():
             cur.append(line)
         elif cur:

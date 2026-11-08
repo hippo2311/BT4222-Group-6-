@@ -130,7 +130,9 @@ def recall_metric(context: SlateContext) -> Mapping[str, MetricContribution]:
     """Impression-mean Recall at every requested K."""
     return {
         f"recall_at_{k}": mean(
-            float(context.ranked_labels[:k].sum()) / context.relevant if context.relevant else 0.0
+            float(context.ranked_labels[:k].sum()) / context.relevant
+            if context.relevant
+            else 0.0
         )
         for k in context.k_values
     }
@@ -150,7 +152,9 @@ def click_retention_metric(context: SlateContext) -> Mapping[str, MetricContribu
 
 
 @register_metric("engaged_impression_rate")
-def engaged_impression_rate_metric(context: SlateContext) -> Mapping[str, MetricContribution]:
+def engaged_impression_rate_metric(
+    context: SlateContext,
+) -> Mapping[str, MetricContribution]:
     """Share of impressions with at least one known Top-K click."""
     return {
         f"engaged_impression_rate_at_{k}": mean(
@@ -179,7 +183,11 @@ class RerankingEvaluator:
     def __init__(self, root=None, split="validation", feature_run=None):
         if split not in SPLITS:
             raise ValueError(f"split must be one of {SPLITS}")
-        self.root = Path(root).resolve() if root is not None else Path(__file__).resolve().parents[2]
+        self.root = (
+            Path(root).resolve()
+            if root is not None
+            else Path(__file__).resolve().parents[2]
+        )
         self.split = split
         self.feature_run = (
             Path(feature_run).resolve()
@@ -200,7 +208,9 @@ class RerankingEvaluator:
             raise TypeError("scores must be a Polars DataFrame, str, or Path")
         missing = set(REQUIRED_COLUMNS) - set(frame.columns)
         if missing:
-            raise ValueError("scores are missing required columns: " + ", ".join(sorted(missing)))
+            raise ValueError(
+                "scores are missing required columns: " + ", ".join(sorted(missing))
+            )
         return frame.select(REQUIRED_COLUMNS)
 
     def _labelled_scores(self, scores):
@@ -212,14 +222,24 @@ class RerankingEvaluator:
         scored = scored.with_columns(pl.col("score").cast(pl.Float64, strict=True))
         if not scored.select(pl.col("score").is_finite().all()).item():
             raise ValueError("scores must be finite")
-        duplicate_scores = scored.group_by(["impression_uid", "news_code"]).len().filter(pl.col("len") > 1)
+        duplicate_scores = (
+            scored.group_by(["impression_uid", "news_code"])
+            .len()
+            .filter(pl.col("len") > 1)
+        )
         if duplicate_scores.height:
             raise ValueError("scores contain duplicate impression/news pairs")
 
-        labels = pl.scan_parquet(self.labels_path).select(
-            "impression_uid", "news_code", "clicked"
-        ).collect()
-        duplicate_labels = labels.group_by(["impression_uid", "news_code"]).len().filter(pl.col("len") > 1)
+        labels = (
+            pl.scan_parquet(self.labels_path)
+            .select("impression_uid", "news_code", "clicked")
+            .collect()
+        )
+        duplicate_labels = (
+            labels.group_by(["impression_uid", "news_code"])
+            .len()
+            .filter(pl.col("len") > 1)
+        )
         if duplicate_labels.height:
             raise ValueError("saved labels contain duplicate impression/news pairs")
         keys = ["impression_uid", "news_code"]
@@ -250,7 +270,9 @@ class RerankingEvaluator:
         k_values = tuple(dict.fromkeys(int(k) for k in k_values))
         if not k_values or any(k < 1 for k in k_values):
             raise ValueError("k_values must contain positive integers")
-        metric_names = tuple(METRIC_REGISTRY) if metric_names is None else tuple(metric_names)
+        metric_names = (
+            tuple(METRIC_REGISTRY) if metric_names is None else tuple(metric_names)
+        )
         unknown_metrics = set(metric_names) - set(METRIC_REGISTRY)
         if unknown_metrics:
             raise ValueError("unknown metrics: " + ", ".join(sorted(unknown_metrics)))
@@ -261,16 +283,27 @@ class RerankingEvaluator:
             required = {"impression_uid", "cohort"}
             missing = required - set(impression_cohorts.columns)
             if missing:
-                raise ValueError("impression_cohorts missing: " + ", ".join(sorted(missing)))
+                raise ValueError(
+                    "impression_cohorts missing: " + ", ".join(sorted(missing))
+                )
             cohorts = impression_cohorts.select("impression_uid", "cohort")
-            if cohorts["impression_uid"].n_unique() != cohorts.height or cohorts["cohort"].null_count():
-                raise ValueError("impression_cohorts must have one non-null cohort per impression")
+            if (
+                cohorts["impression_uid"].n_unique() != cohorts.height
+                or cohorts["cohort"].null_count()
+            ):
+                raise ValueError(
+                    "impression_cohorts must have one non-null cohort per impression"
+                )
             frame = frame.join(cohorts, on="impression_uid", how="left")
             if frame["cohort"].null_count():
-                raise ValueError("impression_cohorts do not cover every scored impression")
+                raise ValueError(
+                    "impression_cohorts do not cover every scored impression"
+                )
 
         rows = []
-        for cohort, group in frame.partition_by("cohort", as_dict=True, maintain_order=True).items():
+        for cohort, group in frame.partition_by(
+            "cohort", as_dict=True, maintain_order=True
+        ).items():
             metric_totals: dict[str, list[float | None]] = {}
             impressions = 0
             for slate in group.partition_by("impression_uid", maintain_order=True):
@@ -285,7 +318,9 @@ class RerankingEvaluator:
                     k_values=k_values,
                 )
                 for metric_name in metric_names:
-                    for column, contribution in METRIC_REGISTRY[metric_name](context).items():
+                    for column, contribution in METRIC_REGISTRY[metric_name](
+                        context
+                    ).items():
                         values = metric_totals.setdefault(
                             column,
                             [0.0, None if contribution.denominator is None else 0.0],
@@ -306,7 +341,13 @@ class RerankingEvaluator:
                 "tie_break": "news_code_ascending_for_top_k",
             }
             for column, (numerator, denominator) in metric_totals.items():
-                row[column] = numerator if denominator is None else numerator / denominator if denominator else None
+                row[column] = (
+                    numerator
+                    if denominator is None
+                    else numerator / denominator
+                    if denominator
+                    else None
+                )
             rows.append(row)
         return pl.DataFrame(rows)
 
@@ -327,7 +368,9 @@ def add_relative_lift(results, *, baseline_model):
     keys = ["split", "cohort"]
     if baseline.group_by(keys).len().filter(pl.col("len") > 1).height:
         raise ValueError("baseline must have one row per split/cohort")
-    metric_columns = [name for name in results.columns if name.startswith("observed_ctr_at_")]
+    metric_columns = [
+        name for name in results.columns if name.startswith("observed_ctr_at_")
+    ]
     renamed = baseline.select(
         *keys, *[pl.col(name).alias(f"_baseline_{name}") for name in metric_columns]
     )
@@ -341,10 +384,14 @@ def add_relative_lift(results, *, baseline_model):
             .otherwise(None)
             .alias(f"{name}_lift_pct_vs_baseline")
         )
-    return output.with_columns(expressions).drop([f"_baseline_{name}" for name in metric_columns])
+    return output.with_columns(expressions).drop(
+        [f"_baseline_{name}" for name in metric_columns]
+    )
 
 
-def evaluate_scored_slates(scores, *, model_name, split="validation", root=None, feature_run=None):
+def evaluate_scored_slates(
+    scores, *, model_name, split="validation", root=None, feature_run=None
+):
     """Convenience wrapper for a one-off complete logged-slate evaluation."""
     return RerankingEvaluator(root=root, split=split, feature_run=feature_run).evaluate(
         scores, model_name=model_name
@@ -354,6 +401,7 @@ def evaluate_scored_slates(scores, *, model_name, split="validation", root=None,
 # ---------------------------------------------------------------------------
 # Scoring complete logged slates
 # ---------------------------------------------------------------------------
+
 
 def write_scores(predict, *, split, feature_run, output_path, columns=()):
     """Stream every logged candidate in ``split`` through ``predict`` into one score file.
@@ -377,12 +425,16 @@ def write_scores(predict, *, split, feature_run, output_path, columns=()):
             frame.attrs["part"] = part
             scores = np.asarray(predict(frame), dtype=np.float64)
             if scores.shape != (len(frame),) or not np.isfinite(scores).all():
-                raise ValueError(f"predict must return one finite score per row ({part.name})")
-            table = pa.table({
-                "impression_uid": frame["impression_uid"],
-                "news_code": frame["news_code"],
-                "score": scores,
-            })
+                raise ValueError(
+                    f"predict must return one finite score per row ({part.name})"
+                )
+            table = pa.table(
+                {
+                    "impression_uid": frame["impression_uid"],
+                    "news_code": frame["news_code"],
+                    "score": scores,
+                }
+            )
             if writer is None:
                 writer = pq.ParquetWriter(output_path, table.schema, compression="zstd")
             writer.write_table(table)
@@ -395,8 +447,9 @@ def write_scores(predict, *, split, feature_run, output_path, columns=()):
     return output_path
 
 
-def score_and_evaluate(predict, *, split, feature_run, output_dir, model_name,
-                       columns=(), results_dir=None):
+def score_and_evaluate(
+    predict, *, split, feature_run, output_dir, model_name, columns=(), results_dir=None
+):
     """Score a complete split, evaluate it, and save the scores and metrics.
 
     Scores are written to ``output_dir/<split>_scores.parquet`` only after the
@@ -407,8 +460,13 @@ def score_and_evaluate(predict, *, split, feature_run, output_dir, model_name,
     output_dir = Path(output_dir)
     score_path = output_dir / f"{split}_scores.parquet"
     partial_path = output_dir / f"{split}_scores.partial.parquet"
-    write_scores(predict, split=split, feature_run=feature_run,
-                 output_path=partial_path, columns=columns)
+    write_scores(
+        predict,
+        split=split,
+        feature_run=feature_run,
+        output_path=partial_path,
+        columns=columns,
+    )
 
     evaluator = RerankingEvaluator(split=split, feature_run=feature_run)
     result = evaluator.evaluate(partial_path, model_name=model_name)
@@ -424,22 +482,29 @@ def score_and_evaluate(predict, *, split, feature_run, output_dir, model_name,
 # Comparing models and inspecting rankings
 # ---------------------------------------------------------------------------
 
+
 def compare_results(results, *, baseline_model=None, sort_by="ndcg_at_10"):
     """Combine result tables (DataFrames or CSV paths) into one sorted comparison.
 
     When ``baseline_model`` is present in the table, observed-CTR lift relative to
     it is added with :func:`add_relative_lift`.
     """
-    frames = [pl.read_csv(item) if isinstance(item, (str, Path)) else item for item in results]
+    frames = [
+        pl.read_csv(item) if isinstance(item, (str, Path)) else item for item in results
+    ]
     if not frames:
         raise ValueError("results must contain at least one table")
     comparison = pl.concat(frames, how="diagonal_relaxed")
     if baseline_model is not None and baseline_model in comparison["model"].to_list():
         comparison = add_relative_lift(comparison, baseline_model=baseline_model)
-    return comparison.sort(["cohort", sort_by, "model"], descending=[False, True, False])
+    return comparison.sort(
+        ["cohort", sort_by, "model"], descending=[False, True, False]
+    )
 
 
-def rank_logged_slate(user_code, score_file, *, feature_run, split="validation", top_n=5):
+def rank_logged_slate(
+    user_code, score_file, *, feature_run, split="validation", top_n=5
+):
     """Rank one user's latest logged impression with a saved score file.
 
     This reorders the articles that were actually shown in that impression; it
@@ -461,10 +526,14 @@ def rank_logged_slate(user_code, score_file, *, feature_run, split="validation",
     )
     if not rows.height:
         raise ValueError(f"No {split} impressions found for user_code={user_code}")
-    latest = rows.sort(["timestamp", "impression_uid"], descending=True)["impression_uid"][0]
+    latest = rows.sort(["timestamp", "impression_uid"], descending=True)[
+        "impression_uid"
+    ][0]
     slate = rows.filter(pl.col("impression_uid") == latest)
 
-    scores = pl.scan_parquet(score_file).filter(pl.col("impression_uid") == latest).collect()
+    scores = (
+        pl.scan_parquet(score_file).filter(pl.col("impression_uid") == latest).collect()
+    )
     ranked = slate.join(scores, on=["impression_uid", "news_code"], how="left")
     if ranked["score"].null_count():
         raise ValueError("The score file does not cover this complete logged slate")
@@ -479,8 +548,16 @@ def rank_logged_slate(user_code, score_file, *, feature_run, split="validation",
 # Generated (retrieved) candidate lists
 # ---------------------------------------------------------------------------
 
-def evaluate_retrieved_candidates(candidates, *, feature_run, split="validation",
-                                  score_column="score", model_name="model", k_values=(5, 10)):
+
+def evaluate_retrieved_candidates(
+    candidates,
+    *,
+    feature_run,
+    split="validation",
+    score_column="score",
+    model_name="model",
+    k_values=(5, 10),
+):
     """Known-click metrics for a generated candidate list ranked by ``score_column``.
 
     ``candidates`` holds ``impression_uid``, ``news_code`` and the score column.
@@ -497,10 +574,9 @@ def evaluate_retrieved_candidates(candidates, *, feature_run, split="validation"
     ).collect()
     if checks["nulls"].item() or not checks["finite"].item():
         raise ValueError("scores must be present and finite")
-    labels = (
-        pl.scan_parquet(Path(feature_run) / f"labels_{split}" / "*.parquet")
-        .select("impression_uid", "news_code", "clicked")
-    )
+    labels = pl.scan_parquet(
+        Path(feature_run) / f"labels_{split}" / "*.parquet"
+    ).select("impression_uid", "news_code", "clicked")
     # A caller may score a subset of the split.  Unscored impressions must not
     # enter the denominator: they would look like impressions where every click
     # was missed.
@@ -512,42 +588,67 @@ def evaluate_retrieved_candidates(candidates, *, feature_run, split="validation"
         .agg(pl.len().alias("relevant"))
     )
     ranked = (
-        frame.select("impression_uid", "news_code", pl.col(score_column).alias("_score"))
-        .sort(["impression_uid", "_score", "news_code"], descending=[False, True, False])
-        .with_columns(pl.int_range(1, pl.len() + 1).over("impression_uid").alias("position"))
+        frame.select(
+            "impression_uid", "news_code", pl.col(score_column).alias("_score")
+        )
+        .sort(
+            ["impression_uid", "_score", "news_code"], descending=[False, True, False]
+        )
+        .with_columns(
+            pl.int_range(1, pl.len() + 1).over("impression_uid").alias("position")
+        )
         .join(labels, on=["impression_uid", "news_code"], how="left")
         .with_columns(pl.col("clicked").fill_null(0))
     )
     is_click = pl.col("clicked") == 1
     per_impression = ranked.group_by("impression_uid").agg(
-        pl.when(is_click).then(1.0 / pl.col("position")).otherwise(0.0).max().alias("mrr"),
+        pl.when(is_click)
+        .then(1.0 / pl.col("position"))
+        .otherwise(0.0)
+        .max()
+        .alias("mrr"),
         *[
             pl.when(is_click & (pl.col("position") <= k))
-            .then(1.0 / (pl.col("position") + 1).log(2)).otherwise(0.0).sum().alias(f"dcg_{k}")
+            .then(1.0 / (pl.col("position") + 1).log(2))
+            .otherwise(0.0)
+            .sum()
+            .alias(f"dcg_{k}")
             for k in k_values
         ],
-        *[(is_click & (pl.col("position") <= k)).sum().alias(f"hits_{k}") for k in k_values],
+        *[
+            (is_click & (pl.col("position") <= k)).sum().alias(f"hits_{k}")
+            for k in k_values
+        ],
         is_click.sum().alias("retrieved_clicks"),
     )
     # Only impressions with at least one known click are evaluated.
     per_impression = (
-        relevant.join(per_impression, on="impression_uid", how="left").fill_null(0).collect()
+        relevant.join(per_impression, on="impression_uid", how="left")
+        .fill_null(0)
+        .collect()
     )
 
     row = {
         "model": model_name,
         "split": split,
         "impressions": per_impression.height,
-        "candidate_recall": per_impression["retrieved_clicks"].sum() / per_impression["relevant"].sum(),
+        "candidate_recall": per_impression["retrieved_clicks"].sum()
+        / per_impression["relevant"].sum(),
         "mrr": per_impression["mrr"].mean(),
     }
     n_relevant = per_impression["relevant"].to_numpy()
     for k in k_values:
         # Ideal DCG places min(relevant, k) known clicks at the top positions.
-        ideal_prefix = np.concatenate([[0.0], np.cumsum(1.0 / np.log2(np.arange(2, k + 2)))])
+        ideal_prefix = np.concatenate(
+            [[0.0], np.cumsum(1.0 / np.log2(np.arange(2, k + 2)))]
+        )
         ideal = ideal_prefix[np.minimum(n_relevant, k)]
-        row[f"ndcg_at_{k}"] = float(np.mean(per_impression[f"dcg_{k}"].to_numpy() / ideal))
-        row[f"recall_at_{k}"] = float(np.mean(per_impression[f"hits_{k}"].to_numpy() / n_relevant))
+        row[f"ndcg_at_{k}"] = float(
+            np.mean(per_impression[f"dcg_{k}"].to_numpy() / ideal)
+        )
+        row[f"recall_at_{k}"] = float(
+            np.mean(per_impression[f"hits_{k}"].to_numpy() / n_relevant)
+        )
     return pl.DataFrame([row])
 
 
