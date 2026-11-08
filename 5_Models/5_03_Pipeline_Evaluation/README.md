@@ -1,129 +1,128 @@
 # 5.03 Pipeline evaluation
 
-Evaluates candidate generation and reranking **together**, end to end, the way they run in
-deployment. The pipeline notebooks are self-sufficient: they build candidates, rerank and
-score the final Top-K in one pass without writing intermediate candidate files.
+These are the **final notebooks** of the project. Each one is self-contained: it trains (or loads)
+its own models from the prepared data and writes its metrics to `results/`. No other notebook has to
+be run first.
 
-| Notebook | Purpose |
-|---|---|
-| [PE_content_reranker_baseline_pipeline.ipynb](PE_content_reranker_baseline_pipeline.ipynb) | Single end-to-end notebook: rebuild the baseline combined generator (200 popularity + 250 content) in memory, rerank with the content-similarity baseline, and evaluate the final Top-K |
-| [PE_popularity_reranker_baseline_pipeline.ipynb](PE_popularity_reranker_baseline_pipeline.ipynb) | Same combined generator, reranked by the causal smoothed prior article CTR baseline, and evaluated on the final Top-K |
-| [PE_attention_reranker_niche_pipeline.ipynb](PE_attention_reranker_niche_pipeline.ipynb) | Single end-to-end notebook: train the niche candidate generator and the `RR_4` `+metadata` reranker inside, generate candidates in memory, and evaluate the reranked final Top-K |
-| [results.ipynb](results.ipynb) | Compare the three pipelines on the test split: load every `pipeline_*.csv` from `results/`, tabulate accuracy and reach metrics, and plot them |
+## Run order
 
-All metrics are known-click metrics: unshown retrieved articles have unknown relevance, and
-clicks the retrievers missed count as misses. Candidate recall is the ceiling for every
-ranking metric.
+Run them top to bottom (**Runtime > Run all** in Colab), in this order:
 
-## Baseline pipelines
+| # | Notebook | What it shows | Trains |
+|---|---|---|---|
+| 1 | [1_RR_only/PE_RR_logged_slates.ipynb](1_RR_only/PE_RR_logged_slates.ipynb) | **Reranker only.** Popularity and content-similarity rules vs the RR4 attention reranker, reordering the exact slates MIND logged | RR4 reranker |
+| 2 | [2_CG_RR_E2E/PE_popularity_reranker_baseline_pipeline.ipynb](2_CG_RR_E2E/PE_popularity_reranker_baseline_pipeline.ipynb) | **End to end, baseline.** Combined generator (200 popularity + 250 content) → popularity reranker → final Top-K | Nothing |
+| 3 | [2_CG_RR_E2E/PE_content_reranker_baseline_pipeline.ipynb](2_CG_RR_E2E/PE_content_reranker_baseline_pipeline.ipynb) | **End to end, baseline.** Same generator → content-similarity reranker → final Top-K | Nothing |
+| 4 | [2_CG_RR_E2E/PE_attention_reranker_niche_pipeline.ipynb](2_CG_RR_E2E/PE_attention_reranker_niche_pipeline.ipynb) | **End to end, final system.** Niche two-tower generator (200 popularity + 250 niche) → RR4 attention reranker → final Top-K | Generator and RR4 reranker |
+| 5 | [results.ipynb](results.ipynb) | Compares notebooks 2–4 on the test split, then shows notebook 1's table | Nothing |
 
-Two single end-to-end notebooks rebuild the same baseline candidate generator in memory and
-differ only in the reranker. Neither reads or writes intermediate candidate files.
+Each notebook starts with one **Configure** cell (section 0), the only cell meant to be edited:
 
-- **Candidate generation**: rebuilds the combined generator from stage 1, 3 and 4 artifacts:
-  200 rolling prior-hour popularity candidates plus 250 content text/entity cosine candidates
-  per request (450 total), with request history removed.
+| Setting | Default | Meaning |
+|---|---|---|
+| `RUN_ENV` | `"auto"` | `"colab"`, `"local"`, or `"auto"` to detect Colab |
+| `COLAB_PROJECT_PATH` | `"/content/drive/MyDrive/BT4222-Group-6-"` | Shared project folder on Colab (also found one folder down in My Drive) |
+| `LOCAL_PROJECT_PATH` | `None` | Project folder when running locally; `None` = the repository the notebook is in |
+| `COLAB_DATA_PATH` | `None` | Prepared data on Colab (`1_Data_Preparation/processed`, `3_Representations/artifacts`, `4_Feature_Engineering/artifacts/prequential-all`); metrics go to `<data path>/results`. `None` = the project folder |
+| `LOCAL_DATA_PATH` | `"/Users/numkoos/Downloads/v3-mindsmall"` | The same for local runs; change it to your own data folder |
+| `MODEL_PATH` | `None` | Where trained models are saved and loaded (notebooks 1 and 4); `None` = `<data path>/5_Models/5_03_Pipeline_Evaluation/artifacts/<model>` |
+| `TARGET_SPLIT` | `"test"` | Split to evaluate (`"test"` or `"validation"`) |
+| `TRAIN_IMPRESSIONS` | `None` | Reranker training impressions; `None` = whole training set (notebooks 1 and 4) |
+| `EVAL_IMPRESSIONS` | `None` | Target impressions evaluated; `None` = every impression (notebooks 2–4) |
+| `REUSE_SAVED_MODELS` | `True` | Load a saved model whose settings match instead of retraining (notebooks 1 and 4) |
+
+The defaults run the whole dataset. A number such as `5_000` for `TRAIN_IMPRESSIONS` or
+`EVAL_IMPRESSIONS` gives a quicker run on a random sample.
+
+### On Google Colab
+
+The notebooks detect Colab automatically. They mount Google Drive and look for the
+`BT4222-Group-6-` folder (code and data together) in My Drive, either directly or one folder down.
+
+1. In Google Drive, right-click the shared folder, then choose **Organise > Add shortcut > My Drive**.
+   You need **Editor** access, because the notebooks save their models and results into that folder.
+2. Open a notebook from Drive with **Open with > Google Colaboratory**.
+3. For notebooks 1 and 4, choose **Runtime > Change runtime type > T4 GPU**.
+4. Run **Runtime > Run all**.
+
+### Locally
+
+Run from the repository with the prepared data restored into it (see the
+[project README](../../README.md)), or point `NEWSREC_DATA_ROOT` at a separate data folder.
+
+## Two kinds of evaluation
+
+- **Reranker only** (`1_RR_only`): the candidates are the articles MIND actually showed, so every
+  candidate has a click label and a non-click is a real negative. This isolates how well each model
+  *orders* a slate. It is an upper bound on reranking quality.
+- **End to end** (`2_CG_RR_E2E`): the generator retrieves 450 articles from the whole catalogue and
+  the reranker orders them. Most retrieved articles were never shown, so their relevance is unknown:
+  they can never be credited as clicks, and a click the generator missed counts as a miss. These are
+  known-click metrics. They are lower bounds, and much smaller than the reranker-only numbers.
+
+The two sets of numbers answer different questions and should not be compared directly.
+
+## Reranker-only notebook
+
+`1_RR_only/PE_RR_logged_slates.ipynb` compares three rerankers on the logged test slates:
+
+- **Popularity**: causal smoothed prior article CTR (`RR_popularity_baseline.ipynb`).
+- **Content similarity**: entity cosine to the user's causal click profile
+  (`RR_content_similarity_baseline.ipynb`).
+- **RR4 attention reranker**: the `+metadata` architecture with the `softmax+lambda_ndcg` loss,
+  trained inside the notebook exactly as in stage 3 of `RR_4_branch_interaction.ipynb`. The
+  preprocessor is fitted on a 10,000-impression training sample. The model trains on every training
+  impression (slates capped at 100, 10% holdout) for up to 20 epochs, with early stopping
+  (patience 3) on holdout nDCG@10.
+
+It reports MRR, nDCG, recall, engaged-impression rate and observed CTR at `K_VALUES = (5, 10, 30)`,
+a breakdown by the user's prior click count, and a comparison with the metrics recorded by the RR_4
+notebook. Outputs:
+
+- `5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/reranker/`: `model.pt` and
+  `preprocessor.joblib`
+- `5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/scores/`: one score file per model
+- `results/rr_only_logged_slates_<split>.csv`, `..._by_history.csv` and `.json`
+
+The `rr_only_` prefix keeps these out of the `pipeline_*` files that `results.ipynb` compares.
+
+## End-to-end baseline pipelines
+
+Two notebooks rebuild the same baseline candidate generator in memory and differ only in the
+reranker. Neither reads or writes intermediate candidate files.
+
+- **Candidate generation**: 200 rolling prior-hour popularity candidates plus 250 content
+  text/entity cosine candidates per request (450 in total), with request history removed.
 - **Rerankers**:
-  - `PE_content_reranker_baseline_pipeline.ipynb` applies the content-similarity rule. The run
-    uses the fixed `content_fusion_text_0.50` rule; text, entity and the other fusion weights
-    are still defined and can be compared by setting `SELECTED_TRIAL = None`.
-  - `PE_popularity_reranker_baseline_pipeline.ipynb` applies the parameter-free causal
-    popularity rule from `RR_popularity_baseline.ipynb`: each candidate is scored by
+  - `PE_popularity_reranker_baseline_pipeline.ipynb` scores each candidate by
     `smoothed_prior_article_ctr`, with ties broken by ascending `news_code`.
+  - `PE_content_reranker_baseline_pipeline.ipynb` applies the fixed `content_fusion_text_0.50` rule.
+    Set `SELECTED_TRIAL = None` to compare all five content rules on validation instead.
 
-The reranked list is evaluated at every cutoff in `K_VALUES = (5, 10, 30)`: every metric in
-`cg_evaluation.py` at `M = k`, plus MRR@k and nDCG@k. The saved final Top-K list uses
-`K = max(K_VALUES) = 30`.
+Outputs: `results/pipeline_baseline_content_popularity_combined_<reranker>_<split>_<impressions>.csv`,
+the final Top-K parquet and config under `5_03_Pipeline_Evaluation/artifacts/`, and causal-feature
+caches under `5_03_Pipeline_Evaluation/artifacts/replayed_features/`.
 
-The content rule is fixed to `content_fusion_text_0.50` by `SELECTED_TRIAL`, so validation and
-test runs need no selection step. Set `SELECTED_TRIAL = None` to compare all five content rules
-on validation and save the winner to
-`results/pipeline_baseline_content_popularity_combined_content_similarity_selection_validation.json`;
-a test run then reuses that selection instead of re-selecting. The popularity rule has no
-settings to tune.
+## End-to-end attention pipeline
 
-Only the final Top-K, metrics, config and replay cache are written; candidate lists and scores
-stay in memory. Outputs are:
+`PE_attention_reranker_niche_pipeline.ipynb` trains (or loads) the niche two-tower generator from
+`CG_niche_content_two_tower_sequential_combined.ipynb` and the `RR_4` `+metadata` reranker, then
+generates candidates in memory and evaluates the reranked Top-K.
 
-- Content reranker:
-  `results/pipeline_baseline_content_popularity_combined_content_similarity_<split>_<impressions>.csv`,
-  `5_03_Pipeline_Evaluation/artifacts/baseline_content_popularity_combined_content_similarity_<split>_top<K>_<impressions>.parquet`,
-  the config under
-  `5_03_Pipeline_Evaluation/artifacts/baseline_content_popularity_combined_content_similarity/`.
-- Popularity reranker:
-  `results/pipeline_baseline_content_popularity_combined_popularity_reranker_<split>_<impressions>.csv`,
-  `5_03_Pipeline_Evaluation/artifacts/baseline_content_popularity_combined_popularity_reranker_<split>_top<K>_<impressions>.parquet`,
-  the config under
-  `5_03_Pipeline_Evaluation/artifacts/baseline_content_popularity_combined_popularity_reranker/`.
+The reranker trains on the generator's training candidates joined to `labels_train`. A generated
+candidate that was never shown has no label and is filled with `clicked = 0` for the listwise loss,
+a known false-negative risk. Evaluation still treats unshown candidates as unknown.
+`TRAIN_IMPRESSIONS` and `EVAL_IMPRESSIONS` control runtime.
 
-Both write their causal-feature caches under
-`5_03_Pipeline_Evaluation/artifacts/replayed_features/`.
+Checkpoints are saved under `5_03_Pipeline_Evaluation/artifacts/attention_reranker_niche/`
+(`candidate_generator/model.pt`, `reranker/model.pt`, `reranker/preprocessor.joblib`), and metrics
+under `results/pipeline_attention_reranker_niche_generated_<split>_<impressions>.csv` with a
+metadata JSON.
 
-## Attention reranker pipeline
+## Metrics
 
-`PE_attention_reranker_niche_pipeline.ipynb` is a single end-to-end notebook: it trains the
-niche candidate generator and the `RR_4` `+metadata` reranker inside the notebook, generates
-candidates in memory, and evaluates the final Top-K.
-
-- **Candidate generation**: the niche two-tower model from
-  `CG_niche_content_two_tower_sequential_combined.ipynb` is trained (or loaded from
-  `candidate_generator/model.pt`) and builds 450 candidates per request: 200 rolling
-  prior-hour popularity + 250 niche.
-- **Reranking**: the `RR_4` `+metadata` model (`softmax+lambda_ndcg`) is trained (or loaded
-  from `reranker/model.pt`) on the generator's training candidates.
-
-Training uses the generator's train candidates joined to `labels_train`; a generated candidate
-that was never shown has no label and is filled with `clicked = 0` for the listwise loss.
-Evaluation still treats unshown candidates as unknown, so clicks the generator missed stay in
-the denominator and count as misses. `TRAIN_IMPRESSIONS` and `EVAL_IMPRESSIONS` control runtime.
-
-The final Top-K lists (`K_VALUES = (5, 10, 30)`, so `K = 30`) are evaluated with every metric
-in `cg_evaluation.py` at `M = K`, plus MRR@K and nDCG@K, matching the baseline pipelines.
-
-Only models, the reranker preprocessor, the causal-feature replay cache, the final Top-K and
-the metric tables are written. Candidate lists and scores stay in memory. Outputs are
-`results/pipeline_attention_reranker_niche_generated_<split>_<impressions>.csv`,
-`5_03_Pipeline_Evaluation/artifacts/attention_reranker_niche_generated_<split>_top<K>_<impressions>.parquet`,
-and the model/cache folders under `5_03_Pipeline_Evaluation/artifacts/attention_reranker_niche/`.
-
-For a test run, set `TARGET_SPLIT = "test"` and rerun. Checkpoints are reused when present and
-compatible; delete the relevant `model.pt` to force retraining. The standalone CG and RR4
-notebooks remain unchanged and can be run independently.
-
-## Comparing the pipelines
-
-`results.ipynb` loads every metrics CSV matching `results/pipeline_*.csv`, so all pipelines are
-compared on the same impressions and cutoffs. It reports accuracy (`ndcg`, `mrr`,
-`recall_pooled`, `recall_impression_mean`, `hit_rate`) and reach/diversity
-(`long_tail_recall`, `cold_article_recall`, `novelty_bits`, `catalogue_coverage`,
-`personalisation`) as tables and plots, plus a written comparison of the three pipelines on the
-test split. It does not write any artifacts; run the three pipeline notebooks first.
-
-## Running it
-
-All pipeline notebooks are self-sufficient. The attention notebook trains the candidate
-generator and RR4 in one run; the two baseline notebooks rebuild their deterministic candidate
-generator in memory. `TRAIN_IMPRESSIONS` (attention only) and `EVAL_IMPRESSIONS` control the
-sampled impressions; `None` uses every impression. The first full run is long because it
-replays the causal timeline for the generated candidates. The feature replay cache and, for
-the attention notebook, the two model checkpoints are reused on later runs, so reruns are
-much faster.
-
-The standalone candidate-generation and RR4 notebooks remain available for independent
-experiments; neither pipeline notebook requires them to be executed first.
-
-### Running on Google Colab
-
-Each pipeline notebook exposes an `ENVIRONMENT` switch in section 1.2. Set it to `"colab"` to
-mount Google Drive, read the project code from `/content/drive/MyDrive/BT4222-Group-6-`, and
-read and write data, artifacts and results under `/content/drive/MyDrive/v3-mindsmall`. Local
-runs keep `ENVIRONMENT = "local"` with the existing `NEWSREC_ROOT` / `NEWSREC_DATA_ROOT`
-overrides.
-
-Outputs are the final Top-K parquet under `5_03_Pipeline_Evaluation/artifacts/` and the metric
-CSV/JSON under `results/`. The attention notebook also writes model checkpoints and the
-preprocessor under `5_03_Pipeline_Evaluation/artifacts/attention_reranker_niche/`; the content
-reranker baseline writes its config under
-`5_03_Pipeline_Evaluation/artifacts/baseline_content_popularity_combined_content_similarity/`,
-and the popularity reranker baseline writes its config under
-`5_03_Pipeline_Evaluation/artifacts/baseline_content_popularity_combined_popularity_reranker/`.
+End-to-end notebooks report, at each `k` in `K_VALUES`, every metric in
+`5_01_Candidate_Generation/cg_evaluation.py` at `M = k` (pooled and impression-mean recall, hit
+rate, long-tail recall, cold-article recall, novelty, catalogue coverage, personalisation), plus
+MRR@k and nDCG@k from `5_02_Reranking/rr_evaluation.py`. The reranker-only notebook uses
+`rr_evaluation.py` on complete logged slates.

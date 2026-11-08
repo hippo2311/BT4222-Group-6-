@@ -2,6 +2,26 @@
 
 This project builds and evaluates a news recommendation pipeline using **MIND-small**. We have already prepared the data, article and user representations, and ranking features, so you can start with the models in stage 5.
 
+## Start here: run the final notebooks on Google Colab
+
+The shared `BT4222-Group-6-` folder holds the code **and** the prepared data, so nothing has to be downloaded or rebuilt. Stages 1–4 have already been run.
+
+1. In Google Drive, right-click the shared folder, then choose **Organise > Add shortcut > My Drive**. Editor access is needed, because the notebooks save their models and results into the folder.
+2. Open each notebook below from Drive with **Open with > Google Colaboratory**. For notebooks 1 and 4, choose **Runtime > Change runtime type > T4 GPU**.
+3. Run each one with **Runtime > Run all**, in this order. The notebooks detect Colab and find the folder automatically, so no paths need editing.
+
+Each notebook has one **Configure** cell at the top (section 0), and it is the only cell meant to be edited. It sets where to run (`RUN_ENV`: `"auto"`, `"colab"` or `"local"`), the project folder, the data path (`COLAB_DATA_PATH` / `LOCAL_DATA_PATH`) and the model path (`MODEL_PATH`). With the defaults, Colab uses `/content/drive/MyDrive/BT4222-Group-6-` for everything. By default it also evaluates the test split, trains on the whole training set and evaluates every test impression. Setting `TRAIN_IMPRESSIONS` or `EVAL_IMPRESSIONS` to a number such as `5_000` gives a quicker run on a sample. `REUSE_SAVED_MODELS = True` loads a model saved by an earlier run when its settings match.
+
+| # | Notebook | Purpose |
+|---|---|---|
+| 1 | [5_Models/5_03_Pipeline_Evaluation/1_RR_only/PE_RR_logged_slates.ipynb](5_Models/5_03_Pipeline_Evaluation/1_RR_only/PE_RR_logged_slates.ipynb) | Reranker only: rule baselines vs the trained RR4 attention reranker on the logged MIND slates |
+| 2 | [5_Models/5_03_Pipeline_Evaluation/2_CG_RR_E2E/PE_popularity_reranker_baseline_pipeline.ipynb](5_Models/5_03_Pipeline_Evaluation/2_CG_RR_E2E/PE_popularity_reranker_baseline_pipeline.ipynb) | End to end: baseline generator + popularity reranker |
+| 3 | [5_Models/5_03_Pipeline_Evaluation/2_CG_RR_E2E/PE_content_reranker_baseline_pipeline.ipynb](5_Models/5_03_Pipeline_Evaluation/2_CG_RR_E2E/PE_content_reranker_baseline_pipeline.ipynb) | End to end: baseline generator + content-similarity reranker |
+| 4 | [5_Models/5_03_Pipeline_Evaluation/2_CG_RR_E2E/PE_attention_reranker_niche_pipeline.ipynb](5_Models/5_03_Pipeline_Evaluation/2_CG_RR_E2E/PE_attention_reranker_niche_pipeline.ipynb) | End to end, final system: niche two-tower generator + RR4 attention reranker |
+| 5 | [5_Models/5_03_Pipeline_Evaluation/results.ipynb](5_Models/5_03_Pipeline_Evaluation/results.ipynb) | Comparison tables and plots across all of the above |
+
+The other notebooks in stages 1–5 are the development work behind these (data preparation, EDA, representations, features, and model selection in `5_01` and `5_02`). They don't need to be run. [5_03_Pipeline_Evaluation/README.md](5_Models/5_03_Pipeline_Evaluation/README.md) explains what each final notebook measures.
+
 ## Project structure
 
 | Stage | Purpose |
