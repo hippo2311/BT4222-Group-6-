@@ -21,11 +21,12 @@ Each notebook starts with one **Configure** cell (section 0), the only cell mean
 | Setting | Default | Meaning |
 |---|---|---|
 | `RUN_ENV` | `"auto"` | `"colab"`, `"local"`, or `"auto"` to detect Colab |
-| `COLAB_PROJECT_PATH` | `"/content/drive/MyDrive/BT4222-Group-6-"` | Shared project folder on Colab (also found one folder down in My Drive) |
+| `COLAB_PROJECT_PATH` | `"/content/drive/MyDrive/submission/4.Code"` | Code folder on Colab (also found one or two folders down in My Drive) |
 | `LOCAL_PROJECT_PATH` | `None` | Project folder when running locally; `None` = the repository the notebook is in |
-| `COLAB_DATA_PATH` | `None` | Prepared data on Colab (`1_Data_Preparation/processed`, `3_Representations/artifacts`, `4_Feature_Engineering/artifacts/prequential-all`); metrics go to `<data path>/results`. `None` = the project folder |
+| `COLAB_DATA_PATH` | `None` | Prepared data on Colab (`1_Data_Preparation/processed`, `3_Representations/artifacts`, `4_Feature_Engineering/artifacts/prequential-all`); metrics go to `<data path>/results`. `None` = the project folder. On the first run the zips in `<submission>/2.Feature_Engineering` are unpacked into it |
 | `LOCAL_DATA_PATH` | `"/Users/numkoos/Downloads/v3-mindsmall"` | The same for local runs; change it to your own data folder |
 | `MODEL_PATH` | `None` | Where trained models are saved and loaded (notebooks 1 and 4); `None` = `<data path>/5_Models/5_03_Pipeline_Evaluation/artifacts/<model>` |
+| `SUBMITTED_MODEL_PATH` | `None` | Colab only (notebooks 1 and 4): submitted checkpoints copied into the model path when it has no saved model yet. `None` = `<submission>/3.Model_Artifacts/MSFT_Reranker` (notebook 1) or `<submission>/3.Model_Artifacts/E2E` (notebook 4, with `candidate_generator/` and `reranker/` subfolders) |
 | `TARGET_SPLIT` | `"test"` | Split to evaluate (`"test"` or `"validation"`) |
 | `TRAIN_IMPRESSIONS` | `None` | Reranker training impressions; `None` = whole training set (notebooks 1 and 4) |
 | `EVAL_IMPRESSIONS` | `None` | Target impressions evaluated; `None` = every impression (notebooks 2–4) |
@@ -36,12 +37,19 @@ The defaults run the whole dataset. A number such as `5_000` for `TRAIN_IMPRESSI
 
 ### On Google Colab
 
-The notebooks detect Colab automatically. They mount Google Drive and look for the
-`BT4222-Group-6-` folder (code and data together) in My Drive, either directly or one folder down.
+The notebooks detect Colab automatically. They mount Google Drive and look for
+`submission/4.Code` in My Drive, either directly or one or two folders down. Then they:
 
-1. In Google Drive, right-click the shared folder, then choose **Organise > Add shortcut > My Drive**.
-   You need **Editor** access, because the notebooks save their models and results into that folder.
-2. Open a notebook from Drive with **Open with > Google Colaboratory**.
+- unpack `submission/2.Feature_Engineering/*.zip` into `4.Code` on the first run (a marker file per
+  zip means an interrupted unpack is redone);
+- for notebooks 1 and 4, copy the checkpoints in `submission/3.Model_Artifacts` into the model path
+  if it has no saved model yet. With `REUSE_SAVED_MODELS = True` and matching settings they are
+  loaded instead of retrained; the submitted files are never overwritten.
+
+1. Open the [submission folder](https://drive.google.com/drive/folders/1jf5KcEc1p39kkPRNLugL7xH7E4TNgBbI),
+   right-click it, then choose **Organise > Add shortcut > My Drive**. You need **Editor** access,
+   because the notebooks unpack the data and save their models and results into `4.Code`.
+2. Open a notebook from `submission/4.Code` with **Open with > Google Colaboratory**.
 3. For notebooks 1 and 4, choose **Runtime > Change runtime type > T4 GPU**.
 4. Run **Runtime > Run all**.
 
@@ -77,12 +85,17 @@ The two sets of numbers answer different questions and should not be compared di
 
 It reports MRR, nDCG, recall, engaged-impression rate and observed CTR at `K_VALUES = (5, 10, 30)`,
 a breakdown by the user's prior click count, and a comparison with the metrics recorded by the RR_4
-notebook. Outputs:
+notebook. Section 8 then explains RR4's use of the tabular features: permutation importance per
+feature group and per single feature (test nDCG@10 lost when it is shuffled, within slates or across
+impressions) and SHAP
+values, including a within-slate SHAP that ignores shifts shared by the whole slate. Outputs:
 
 - `5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/reranker/`: `model.pt` and
   `preprocessor.joblib`
 - `5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/scores/`: one score file per model
 - `results/rr_only_logged_slates_<split>.csv`, `..._by_history.csv` and `.json`
+- `results/rr_only_feature_permutation_<split>.csv`, `..._permutation_single_<split>.csv` and
+  `results/rr_only_feature_shap_<split>.csv`
 
 The `rr_only_` prefix keeps these out of the `pipeline_*` files that `results.ipynb` compares.
 
