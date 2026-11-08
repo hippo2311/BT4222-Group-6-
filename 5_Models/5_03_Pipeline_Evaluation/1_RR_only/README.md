@@ -18,6 +18,8 @@ The notebook:
 4. scores all models with `rr_evaluation.py`;
 5. compares RR4 with the metrics the RR_4 notebook recorded;
 6. breaks the results down by the user's prior click count.
+7. measures how much RR4's ranking depends on its tabular features: permutation importance per
+   feature group and per single feature (test nDCG@10 lost when it is shuffled), and SHAP values.
 
 It runs on Colab or locally without edits; see the [5_03 README](../README.md#on-google-colab).
 
@@ -35,3 +37,6 @@ It runs on Colab or locally without edits; see the [5_03 README](../README.md#on
 - `5_Models/5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/scores/<model>_<split>_scores.parquet`
 - `results/rr_only_logged_slates_<split>.csv`, `rr_only_logged_slates_<split>_by_history.csv`
   and `rr_only_logged_slates_<split>.json`
+- `results/rr_only_feature_permutation_<split>.csv` (one row per feature group),
+  `results/rr_only_feature_permutation_single_<split>.csv` (one row per tabular feature) and
+  `results/rr_only_feature_shap_<split>.csv` (one row per tabular feature)
