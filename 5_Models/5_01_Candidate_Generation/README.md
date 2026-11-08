@@ -33,6 +33,7 @@ the two so the re-ranker sees popular and long-tail articles.
 | Notebook | Model name(s) | What it does |
 |---|---|---|
 | [CG_content_two_tower_mlp.ipynb](2_neural_models/CG_content_two_tower_mlp.ipynb) | `content_two_tower_mlp_bpr` | Content-only two-tower MLP. The user tower consumes a pooled 166-d history profile; the item tower consumes intrinsic text/entity content and missing-vector flags. BPR with up to four exposed negatives redrawn per positive each epoch. Writes Top-500. |
+| [CG_content_two_tower_popularity_mlp.ipynb](2_neural_models/CG_content_two_tower_popularity_mlp.ipynb) | `content_two_tower_popularity_mlp_bpr` | Popularity-aware two-tower MLP. The item tower consumes the same 166-d content input plus `log1p` prior-hour exposures and clicks (168-d). Serving adds frozen exposure/click weights tuned on the chronological tuning slates; the additive term never enters the training loss. Writes Top-500. |
 | [CG_gmf.ipynb](2_neural_models/CG_gmf.ipynb) | `gmf_bpr` | Generalised matrix factorisation: 256-d user and item embeddings with a raw dot-product score, trained with BPR and per-epoch exposed negatives. Writes Top-500. |
 | [CG_ncf.ipynb](2_neural_models/CG_ncf.ipynb) | `ncf_bpr` | Neural collaborative filtering: two 128-d embeddings concatenated through an MLP (`256 → 128 → 64 → 32 → 1`), trained with BPR and per-epoch exposed negatives. Writes Top-500. |
 | [CG_ncf_features.ipynb](2_neural_models/CG_ncf_features.ipynb) | `ncf_features_early_bpr`, `ncf_features_late_bpr` | Feature-aware NCF: early fusion joins separate user/item towers, late fusion merges ID embeddings before appending features. Uses pooled text/entity history and article category/text features. Writes Top-500 per variant. |
@@ -174,7 +175,7 @@ The neural and content notebooks follow the same causal protocol:
 - Request profiles use `full_history_rows`; a later request's profile is never reused for an earlier request.
 - Every article in the request's causal history is excluded from its candidates.
 - Eligibility is `available_from <= timestamp`.
-- Popularity or rolling prior-hour popularity is used only for tie-breaking and empty-history fallback, never as a neural input.
+- Popularity or rolling prior-hour popularity is used only for tie-breaking and empty-history fallback, except `CG_content_two_tower_popularity_mlp.ipynb`, which feeds causal prior-hour exposure/click counts to the item tower and adds frozen serving-only weights.
 - Neural models train on the full `labels_train` pool with up to four exposed negatives redrawn per positive each epoch.
 - Training uses a chronological 90% tuning slice, early stopping on mean slate NDCG@k, then a refit on all training rows.
 - Outputs are ranking scores, not calibrated click probabilities.
@@ -212,6 +213,7 @@ produced by the current notebooks are listed here.
 | `artifacts/content_text/`, `artifacts/content_entity/`, `artifacts/content_text_entity/` | `recommendations_validation_top500.parquet` |
 | `artifacts/popularity_freshness_prior_hour_clicks/` | `recommendations_validation_top500.parquet` |
 | `artifacts/two_tower_content_bpr/` | `model.pt`, `profile_index_{train,validation}.parquet`, `profile_uids_{train,validation}.npy`, `user_features_{train,validation}.npy`, `recommendations_validation_top500.parquet`, `training_log.csv` |
+| `artifacts/two_tower_content_popularity_bpr/` | `model.pt`, `profile_index_{train,validation}.parquet`, `profile_uids_{train,validation}.npy`, `user_features_{train,validation}.npy`, `recommendations_validation_top500.parquet`, `training_log.csv`, `serving_weight_search.csv` |
 | `artifacts/gmf_bpr/`, `artifacts/ncf_bpr/`, `artifacts/ncf_features_early_bpr/`, `artifacts/ncf_features_late_bpr/` | `model.pt`, `recommendations_validation_top500.parquet`, `training_log.csv` |
 | `artifacts/niche_two_tower/` | `model.pt`, `recommendations_validation.parquet`, `training_history.csv`, `long_tail_recall_curve.csv`, `long_tail_recall_curve.png`, `run_summary.csv` |
 | `artifacts/baseline_content_popularity_combined/` | `recommendations_validation_top450.parquet` |
