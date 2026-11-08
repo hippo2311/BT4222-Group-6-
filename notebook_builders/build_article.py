@@ -1,6 +1,7 @@
 import sys
+
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parent))
-from eda_common import Cells, write_notebook, SETUP
+from eda_common import SETUP, Cells, write_notebook
 
 c = Cells()
 c.md(r"""

@@ -43,9 +43,7 @@ class CandidateWriter:
         self.frames = []
         self.pending = 0
         self.rows = 0
-        self.writer = pq.ParquetWriter(
-            self.path, CANDIDATE_SCHEMA, compression="zstd"
-        )
+        self.writer = pq.ParquetWriter(self.path, CANDIDATE_SCHEMA, compression="zstd")
 
     def add(self, impression_uid, cutoff, news_code):
         frame = pa.table(
@@ -77,6 +75,6 @@ class CandidateWriter:
 
 __all__ = [
     "CANDIDATE_SCHEMA",
-    "CandidateWriter",
     "DEFAULT_BATCH_ROWS",
+    "CandidateWriter",
 ]

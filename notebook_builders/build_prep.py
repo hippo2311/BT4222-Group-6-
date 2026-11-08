@@ -1,9 +1,14 @@
 """Builds 1_Data_Preparation/clean_and_validate_data.ipynb (nbformat v4)."""
+
 from pathlib import Path
 
 import nbformat as nbf
 
-OUT = Path(__file__).resolve().parent.parent / "1_Data_Preparation" / "clean_and_validate_data.ipynb"
+OUT = (
+    Path(__file__).resolve().parent.parent
+    / "1_Data_Preparation"
+    / "clean_and_validate_data.ipynb"
+)
 OUT.parent.mkdir(parents=True, exist_ok=True)
 cells = []
 md = lambda s: cells.append(nbf.v4.new_markdown_cell(s.strip("\n")))
@@ -671,7 +676,9 @@ display(Markdown(summary_md))
 
 nb = nbf.v4.new_notebook()
 nb["cells"] = cells
-nb["metadata"] = {"kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
-                  "language_info": {"name": "python"}}
+nb["metadata"] = {
+    "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+    "language_info": {"name": "python"},
+}
 nbf.write(nb, OUT)
 print("wrote", OUT, len(cells), "cells")

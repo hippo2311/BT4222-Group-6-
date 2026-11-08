@@ -33,13 +33,14 @@ class EpochNegativeSampler:
             raise ValueError(f"rows missing columns: {sorted(missing)}")
         prepared = []
         for uid, slate in rows.groupby("impression_uid", sort=True):
-            if slate["news_code"].duplicated().any() or not slate[
-                "clicked"
-            ].isin([0, 1]).all():
-                raise ValueError("Sampling requires unique binary-labelled logged pairs")
-            positives = sorted(
-                map(int, slate.loc[slate["clicked"].eq(1), "news_code"])
-            )
+            if (
+                slate["news_code"].duplicated().any()
+                or not slate["clicked"].isin([0, 1]).all()
+            ):
+                raise ValueError(
+                    "Sampling requires unique binary-labelled logged pairs"
+                )
+            positives = sorted(map(int, slate.loc[slate["clicked"].eq(1), "news_code"]))
             negatives = np.sort(
                 slate.loc[slate["clicked"].eq(0), "news_code"].to_numpy(np.int64)
             )
@@ -154,9 +155,7 @@ def tuning_slates(
         *extra_columns,
     ]
     frame = pl.read_parquet(candidates_path, columns=columns)
-    timestamps = frame["timestamp"].to_numpy().astype("datetime64[ns]").astype(
-        np.int64
-    )
+    timestamps = frame["timestamp"].to_numpy().astype("datetime64[ns]").astype(np.int64)
     frame = frame.filter(pl.Series("ts_ns", timestamps) > int(cutoff_ns))
     if frame.height == 0:
         raise ValueError("No tuning rows after the chronological cutoff")
@@ -166,9 +165,7 @@ def tuning_slates(
         uids = frame["impression_uid"].unique()
         if uids.len() > max_impressions:
             uids = uids.sample(n=max_impressions, seed=seed, shuffle=True)
-            frame = frame.filter(
-                pl.col("impression_uid").is_in(uids.implode())
-            )
+            frame = frame.filter(pl.col("impression_uid").is_in(uids.implode()))
     frame = frame.join(article_index, on="news_code", how="left")
     frame = frame.join(profile_index, on="impression_uid", how="left")
     return frame

@@ -4,10 +4,14 @@ Reranking orders the articles in an impression so the ones a user will click com
 Every notebook here trains (or defines) one model family, scores **every candidate in every
 complete logged slate**, and evaluates those scores with the shared `rr_evaluation.py`.
 
-The notebooks read prepared data from `DATA_ROOT` (default
-`/Users/numkoos/Downloads/v3-mindsmall`) and write checkpoints, score files and metric
-tables there. Change `ENVIRONMENT`, `PROJECT_ROOT` and `DATA_ROOT` in section 1.2 of a
-notebook to run it elsewhere (for example on Colab).
+The notebooks read prepared data from `DATA_ROOT` and write checkpoints, score files and
+metric tables there. Each notebook has an `ENVIRONMENT` switch in its setup cell:
+
+- `"local"` (default): `PROJECT_ROOT` is found by walking up from the working directory to the
+  folder that contains `5_Models/` (override with the `PROJECT_ROOT` environment variable), and
+  `DATA_ROOT` defaults to `PROJECT_ROOT` (override with the `DATA_ROOT` environment variable).
+- `"colab"`: mounts Google Drive and uses `/content/drive/MyDrive/BT4222-Group-6-` for the
+  code and `/content/drive/MyDrive/v3-mindsmall` for the data.
 
 ## Notebooks
 
@@ -93,6 +97,7 @@ impression average, `ratio(...)` for a pooled numerator and denominator, or
 
 ```python
 from rr_evaluation import mean, register_metric
+
 
 @register_metric("top_ranked_click")
 def top_ranked_click(context):

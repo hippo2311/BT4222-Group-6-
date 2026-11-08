@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -19,7 +19,7 @@ from scipy import sparse
 
 
 def _now():
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _write_json(path, payload):
@@ -62,9 +62,7 @@ def load_context(root):
         raise ValueError("Missing available_from for some articles")
     available_from = np.empty(n_items, dtype="datetime64[ns]")
     available_from[0] = np.datetime64("1970-01-01")
-    available_from[1:] = joined["available_from"].to_numpy().astype(
-        "datetime64[ns]"
-    )
+    available_from[1:] = joined["available_from"].to_numpy().astype("datetime64[ns]")
 
     catalogue = pl.read_parquet(
         processed / "news_catalogue.parquet", columns=["news_code", "exposures_train"]
@@ -165,10 +163,7 @@ def _train_pairs(root, ctx):
     )
     if pairs["user_code"].min() < 0 or pairs["user_code"].max() >= ctx.n_users:
         raise ValueError("Interaction user_code is outside the matrix")
-    if (
-        pairs["article_row"].min() < 1
-        or pairs["article_row"].max() >= ctx.n_items
-    ):
+    if pairs["article_row"].min() < 1 or pairs["article_row"].max() >= ctx.n_items:
         raise ValueError("Interaction article_row is outside the matrix")
     return pairs
 
@@ -209,7 +204,10 @@ def build_interaction_matrix(root, ctx, *, rebuild=False):
         "created_at": _now(),
         "cutoff": str(
             pl.scan_parquet(
-                Path(root) / "1_Data_Preparation" / "processed" / "impressions_train.parquet"
+                Path(root)
+                / "1_Data_Preparation"
+                / "processed"
+                / "impressions_train.parquet"
             )
             .select(pl.col("timestamp").max())
             .collect()
