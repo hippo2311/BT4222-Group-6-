@@ -192,6 +192,14 @@ frozen Stage 3 representations.
 
 There is no `run_all.py` entry for stage 5; run the notebooks individually.
 
+### Running on Google Colab
+
+Every model notebook starts with an `ENVIRONMENT` switch in its setup cell. Set it to
+`"colab"` to mount Google Drive, read the project code from
+`/content/drive/MyDrive/BT4222-Group-6-`, and read and write data and artifacts under
+`/content/drive/MyDrive/v3-mindsmall`. Local runs keep `ENVIRONMENT = "local"` and resolve the
+checkout from `run_all.py`, with `NEWSREC_ROOT` still overriding the data root.
+
 ## Artifacts
 
 Generated files are written under `artifacts/<model>/` and are gitignored. Only artifacts

@@ -491,6 +491,12 @@ def evaluate_retrieved_candidates(candidates, *, feature_run, split="validation"
     an upper bound for the ranking metrics.
     """
     frame = candidates.lazy() if isinstance(candidates, pl.DataFrame) else candidates
+    checks = frame.select(
+        pl.col(score_column).is_null().any().alias("nulls"),
+        pl.col(score_column).is_finite().all().alias("finite"),
+    ).collect()
+    if checks["nulls"].item() or not checks["finite"].item():
+        raise ValueError("scores must be present and finite")
     labels = (
         pl.scan_parquet(Path(feature_run) / f"labels_{split}" / "*.parquet")
         .select("impression_uid", "news_code", "clicked")
