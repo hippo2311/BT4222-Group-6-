@@ -1,14 +1,70 @@
+# These fixtures execute trusted notebook source from this repository.
+# ruff: noqa: S102
+
+import contextlib
+import io
 import json
+import os
+import sys
 from dataclasses import asdict, replace
+from pathlib import Path
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from notebook_support import api
+
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "src"))
+
+from test_representations import make_fixture
 
 from newsrec.common import Settings
 from newsrec.io import feature_run
-from newsrec.ranking import sample_training_groups
+from newsrec.ranking import (
+    TemporalState,
+    build_features,
+    feature_schema,
+    sample_training_groups,
+)
 from newsrec.training import iter_training_epoch
+
+
+@pytest.fixture
+def dataset(tmp_path):
+    """Synthetic data root with processed splits and stage-3 representations."""
+    make_fixture(tmp_path)
+    with patch.dict(os.environ, NEWSREC_CODE=str(REPO), NEWSREC_ROOT=str(tmp_path)):
+        for path in sorted((REPO / "3_Representations").glob("*.ipynb")):
+            namespace = {"__name__": "__main__"}
+            notebook = json.loads(path.read_text())
+            with contextlib.redirect_stdout(io.StringIO()):
+                for i, cell in enumerate(notebook["cells"]):
+                    if cell["cell_type"] == "code":
+                        exec(
+                            compile(
+                                "".join(cell["source"]), f"{path.name}:cell{i}", "exec"
+                            ),
+                            namespace,
+                        )
+    return tmp_path
+
+
+@pytest.fixture
+def config():
+    return Settings()
+
+
+def build_ranking_dataset(root, cfg, overwrite=False):
+    """Build (or reuse) a full feature run exactly as the 4_01 notebook does."""
+    return feature_run(
+        root,
+        cfg,
+        rebuild=overwrite,
+        state_factory=TemporalState,
+        feature_builder=build_features,
+        negative_sampler=sample_training_groups,
+        schema_builder=feature_schema,
+    )
 
 
 def test_epoch_draws_reproduce_and_vary_within_logged_slate():
@@ -39,7 +95,7 @@ def test_epoch_draws_reproduce_and_vary_within_logged_slate():
 
 def test_build_retains_full_pool_and_fixed_mode_still_works(dataset, config):
     cfg = replace(config, negative_count=1)
-    run = api.build_ranking_dataset(dataset, cfg)
+    run = build_ranking_dataset(dataset, cfg)
     source = pd.read_parquet(
         dataset / "1_Data_Preparation/processed/candidates_train.parquet"
     )
@@ -58,8 +114,8 @@ def test_build_retains_full_pool_and_fixed_mode_still_works(dataset, config):
     fixed = replace(cfg, training_negative_sampling="fixed")
     # Cached full-pool artifacts cannot silently serve an incompatible config.
     with pytest.raises(ValueError, match="settings differ"):
-        feature_run(dataset, fixed, schema_builder=api.feature_schema)
-    run = api.build_ranking_dataset(dataset, fixed, overwrite=True)
+        feature_run(dataset, fixed, schema_builder=feature_schema)
+    run = build_ranking_dataset(dataset, fixed, overwrite=True)
     assert len(pd.read_parquet(run / "ranking_features_train")) < len(source)
     pd.testing.assert_frame_equal(
         validation, pd.read_parquet(run / "ranking_features_validation")
