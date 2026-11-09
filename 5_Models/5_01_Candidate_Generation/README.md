@@ -205,16 +205,22 @@ There is no `run_all.py` entry for stage 5; run the notebooks individually.
 
 ### Running on Google Colab
 
-Every model notebook starts with an `ENVIRONMENT` switch in its setup cell. Set it to
-`"colab"` to mount Google Drive, read the project code from
-`/content/drive/MyDrive/BT4222-Group-6-`, and read and write data and artifacts under
-`/content/drive/MyDrive/v3-mindsmall`. Local runs keep `ENVIRONMENT = "local"` and resolve the
-checkout from `run_all.py`, with `NEWSREC_ROOT` still overriding the data root.
+Every model notebook starts with an `ENVIRONMENT` switch and `COLAB_DATA_PATH` / `LOCAL_DATA_PATH`
+in its configure cell. Set `ENVIRONMENT` to `"colab"` to mount Google Drive, read the project code
+from `/content/drive/MyDrive/submission/4.Code`, and read and write candidate-generation artifacts
+under `/content/drive/MyDrive/submission/3.Model_Artifacts/CG`. On Colab the prepared data zipped in
+`<submission>/2.Feature_Engineering` is unpacked into the data path on the first run (default: the
+project folder). Local runs keep `ENVIRONMENT = "local"`, resolve the checkout from `run_all.py`,
+and write data and artifacts under the data root (artifacts in
+`5_Models/5_01_Candidate_Generation/artifacts`). Set `COLAB_DATA_PATH` / `LOCAL_DATA_PATH`, or the
+`NEWSREC_DATA_ROOT` / `NEWSREC_ROOT` environment variables, to put the prepared data somewhere else.
 
 ## Artifacts
 
-Generated files are written under `artifacts/<model>/` and are gitignored. Only artifacts
-produced by the current notebooks are listed here.
+Generated files are written under `artifacts/<model>/` locally and under
+`/content/drive/MyDrive/submission/3.Model_Artifacts/CG/<model>/` on Colab (the `artifacts`
+level is dropped there). Artifacts are gitignored. Only artifacts produced by the current
+notebooks are listed here.
 
 | Folder | Files |
 |---|---|
