@@ -17,16 +17,20 @@ The notebook:
    checkpoint;
 4. scores all models with `rr_evaluation.py`;
 5. compares RR4 with the metrics the RR_4 notebook recorded;
-6. breaks the results down by the user's prior click count.
+6. breaks the results down by the user's prior click count;
 7. measures how much RR4's ranking depends on its tabular features: permutation importance per
-   feature group and per single feature (test nDCG@10 lost when it is shuffled), and SHAP values.
+   feature group and per single feature (test nDCG@10 lost when it is shuffled), and SHAP values;
+8. runs model diagnostics: the training curve, the validation-to-test gap (RR4 and popularity
+   are also scored on the other split), nDCG@10 by slate size, where new and older clicked articles
+   are ranked, and what the clicks RR4 misses have in common.
 
 It runs on Colab or locally without edits; see the [5_03 README](../README.md#on-google-colab).
 
 ## Inputs (under the project folder)
 
 - `4_Feature_Engineering/artifacts/prequential-all/`: `feature_schema.json`, and
-  `ranking_features_*`, `labels_*` and `request_profiles_*` for `train` and the target split
+  `ranking_features_*`, `labels_*` and `request_profiles_*` for `train`, `validation` and `test`
+  (section 9.2 scores the split that is not the target; it is skipped if that split is missing)
 - `3_Representations/artifacts/`: `article_index.parquet`, `text64.npy`, `article_entity100.npy`
 - `5_Models/5_02_Reranking/rr_evaluation.py`
 
@@ -40,3 +44,4 @@ It runs on Colab or locally without edits; see the [5_03 README](../README.md#on
 - `results/rr_only_feature_permutation_<split>.csv` (one row per feature group),
   `results/rr_only_feature_permutation_single_<split>.csv` (one row per tabular feature) and
   `results/rr_only_feature_shap_<split>.csv` (one row per tabular feature)
+- `results/rr_only_diagnostics_<split>_<table>.csv`: one file per diagnostic table

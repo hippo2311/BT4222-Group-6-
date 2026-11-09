@@ -88,7 +88,9 @@ a breakdown by the user's prior click count, and a comparison with the metrics r
 notebook. Section 8 then explains RR4's use of the tabular features: permutation importance per
 feature group and per single feature (test nDCG@10 lost when it is shuffled, within slates or across
 impressions) and SHAP
-values, including a within-slate SHAP that ignores shifts shared by the whole slate. Outputs:
+values, including a within-slate SHAP that ignores shifts shared by the whole slate. Section 9 runs
+model diagnostics: training curve, validation-to-test gap, results by slate size and article
+history, and a failure analysis of missed clicks. Outputs:
 
 - `5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/reranker/`: `model.pt` and
   `preprocessor.joblib`
@@ -96,6 +98,7 @@ values, including a within-slate SHAP that ignores shifts shared by the whole sl
 - `results/rr_only_logged_slates_<split>.csv`, `..._by_history.csv` and `.json`
 - `results/rr_only_feature_permutation_<split>.csv`, `..._permutation_single_<split>.csv` and
   `results/rr_only_feature_shap_<split>.csv`
+- `results/rr_only_diagnostics_<split>_<table>.csv`, one file per diagnostic table
 
 The `rr_only_` prefix keeps these out of the `pipeline_*` files that `results.ipynb` compares.
 
