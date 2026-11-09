@@ -9,6 +9,16 @@ Retrieval is organised around two channels: a high-precision **popularity** chan
 prequential clicks) and a high-recall **niche/content** channel. The combined notebooks union
 the two so the re-ranker sees popular and long-tail articles.
 
+## Reusing saved artifacts
+
+Most experiment notebooks start with a **Configure** cell. Notebooks with reusable artifacts (the
+collaborative-filtering baseline and the neural/niche notebooks) expose `REUSE_ARTIFACTS`; set it
+to `True` to load the saved checkpoint or cached intermediate state and skip training/rebuilding,
+or `False` to rebuild from scratch. Candidate lists are always regenerated for `TARGET_SPLIT`, so a
+new validation or test split is served normally. The content and rolling-popularity baselines have
+no artifacts to reuse, so they expose only `ENVIRONMENT` and `TARGET_SPLIT` and always generate
+their lists from scratch.
+
 ## Contents
 
 ### Shared modules
