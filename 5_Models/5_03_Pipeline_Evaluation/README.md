@@ -25,12 +25,16 @@ Each notebook starts with one **Configure** cell (section 0), the only cell mean
 | `LOCAL_PROJECT_PATH` | `None` | Project folder when running locally; `None` = the repository the notebook is in |
 | `COLAB_DATA_PATH` | `None` | Prepared data on Colab (`1_Data_Preparation/processed`, `3_Representations/artifacts`, `4_Feature_Engineering/artifacts/prequential-all`); metrics go to `<data path>/results`. `None` = the project folder. On the first run the zips in `<submission>/2.Feature_Engineering` are unpacked into it |
 | `LOCAL_DATA_PATH` | `"/Users/numkoos/Downloads/v3-mindsmall"` | The same for local runs; change it to your own data folder |
-| `MODEL_PATH` | `None` | Where trained models are saved and loaded (notebooks 1 and 4); `None` = `<data path>/5_Models/5_03_Pipeline_Evaluation/artifacts/<model>` |
-| `SUBMITTED_MODEL_PATH` | `None` | Colab only (notebooks 1 and 4): submitted checkpoints copied into the model path when it has no saved model yet. `None` = `<submission>/3.Model_Artifacts/MSFT_Reranker` (notebook 1) or `<submission>/3.Model_Artifacts/E2E` (notebook 4, with `candidate_generator/` and `reranker/` subfolders) |
+| `TRAIN_RERANKER` | `False` | Notebook 1: `False` loads the trained RR4 reranker from the load path, with no training; `True` trains a new one and saves it to the save path |
+| `COLAB_LOAD_MODEL_PATH` / `LOCAL_LOAD_MODEL_PATH` | `"/content/drive/MyDrive/submission/3.Model_Artifacts/reranker"` / `None` | Notebook 1: folder holding `model.pt` and `preprocessor.joblib`, read when `TRAIN_RERANKER = False`. If the files are missing, the notebook stops in its paths cell (1.2) and lists what the folder contains. Local `None` = `<data path>/5_Models/5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/reranker` |
+| `COLAB_SAVE_MODEL_PATH` / `LOCAL_SAVE_MODEL_PATH` | `"/content/drive/MyDrive/submission/3.Model_Artifacts/Train_Reranker"` / `None` | Notebook 1: where a model trained with `TRAIN_RERANKER = True` is saved; the load path is never overwritten. Local `None` = the same default folder |
+| `TRAIN_CANDIDATE_GENERATOR` / `TRAIN_RERANKER` | `False` / `False` | Notebook 4: for each model, `False` loads it from its load path (no training) and `True` trains a new one and saves it to its save path. A missing model stops the notebook in its paths cell (1.2) |
+| `COLAB_CG_LOAD_MODEL_PATH` / `COLAB_CG_SAVE_MODEL_PATH` | `".../3.Model_Artifacts/E2E/candidate_generator"` / `".../3.Model_Artifacts/Train_CG"` | Notebook 4: where the candidate generator's `model.pt` is read from, and where a newly trained one is saved |
+| `COLAB_RR_LOAD_MODEL_PATH` / `COLAB_RR_SAVE_MODEL_PATH` | `".../3.Model_Artifacts/E2E/reranker"` / `".../3.Model_Artifacts/Train_E2E_Reranker"` | Notebook 4: the same for its reranker (`model.pt`, `preprocessor.joblib`). It is a different model from notebook 1's: it is trained on generated candidates |
+| `LOCAL_CG_*` / `LOCAL_RR_*` | `None` | Notebook 4, local runs; `None` = `<data path>/5_Models/5_03_Pipeline_Evaluation/artifacts/attention_reranker_niche/candidate_generator` (or `reranker`) |
 | `TARGET_SPLIT` | `"test"` | Split to evaluate (`"test"` or `"validation"`) |
-| `TRAIN_IMPRESSIONS` | `None` | Reranker training impressions; `None` = whole training set (notebooks 1 and 4) |
+| `TRAIN_IMPRESSIONS` | `None` | Reranker training impressions; `None` = whole training set (when `TRAIN_RERANKER = True`, notebooks 1 and 4) |
 | `EVAL_IMPRESSIONS` | `None` | Target impressions evaluated; `None` = every impression (notebooks 2–4) |
-| `REUSE_SAVED_MODELS` | `True` | Load a saved model whose settings match instead of retraining (notebooks 1 and 4) |
 
 The defaults run the whole dataset. A number such as `5_000` for `TRAIN_IMPRESSIONS` or
 `EVAL_IMPRESSIONS` gives a quicker run on a random sample.
@@ -42,9 +46,13 @@ The notebooks detect Colab automatically. They mount Google Drive and look for
 
 - unpack `submission/2.Feature_Engineering/*.zip` into `4.Code` on the first run (a marker file per
   zip means an interrupted unpack is redone);
-- for notebooks 1 and 4, copy the checkpoints in `submission/3.Model_Artifacts` into the model path
-  if it has no saved model yet. With `REUSE_SAVED_MODELS = True` and matching settings they are
-  loaded instead of retrained; the submitted files are never overwritten.
+- for notebook 1, load the RR4 model from `submission/3.Model_Artifacts/reranker`
+  (`TRAIN_RERANKER = False`), or train a new one and save it to
+  `submission/3.Model_Artifacts/Train_Reranker` (`TRAIN_RERANKER = True`);
+- for notebook 4, load the candidate generator and reranker from
+  `submission/3.Model_Artifacts/E2E/candidate_generator` and `.../E2E/reranker`, or train new ones
+  (`TRAIN_CANDIDATE_GENERATOR` / `TRAIN_RERANKER = True`) saved to `3.Model_Artifacts/Train_CG` and
+  `3.Model_Artifacts/Train_E2E_Reranker`. The load folders are never overwritten.
 
 1. Open the [submission folder](https://drive.google.com/drive/folders/1jf5KcEc1p39kkPRNLugL7xH7E4TNgBbI),
    right-click it, then choose **Organise > Add shortcut > My Drive**. You need **Editor** access,
@@ -88,7 +96,9 @@ a breakdown by the user's prior click count, and a comparison with the metrics r
 notebook. Section 8 then explains RR4's use of the tabular features: permutation importance per
 feature group and per single feature (test nDCG@10 lost when it is shuffled, within slates or across
 impressions) and SHAP
-values, including a within-slate SHAP that ignores shifts shared by the whole slate. Outputs:
+values, including a within-slate SHAP that ignores shifts shared by the whole slate. Section 9 runs
+model diagnostics: training curve, validation-to-test gap, results by slate size and article
+history, and a failure analysis of missed clicks. Outputs:
 
 - `5_03_Pipeline_Evaluation/artifacts/reranker_logged_slates/reranker/`: `model.pt` and
   `preprocessor.joblib`
@@ -96,6 +106,7 @@ values, including a within-slate SHAP that ignores shifts shared by the whole sl
 - `results/rr_only_logged_slates_<split>.csv`, `..._by_history.csv` and `.json`
 - `results/rr_only_feature_permutation_<split>.csv`, `..._permutation_single_<split>.csv` and
   `results/rr_only_feature_shap_<split>.csv`
+- `results/rr_only_diagnostics_<split>_<table>.csv`, one file per diagnostic table
 
 The `rr_only_` prefix keeps these out of the `pipeline_*` files that `results.ipynb` compares.
 
@@ -127,8 +138,9 @@ candidate that was never shown has no label and is filled with `clicked = 0` for
 a known false-negative risk. Evaluation still treats unshown candidates as unknown.
 `TRAIN_IMPRESSIONS` and `EVAL_IMPRESSIONS` control runtime.
 
-Checkpoints are saved under `5_03_Pipeline_Evaluation/artifacts/attention_reranker_niche/`
-(`candidate_generator/model.pt`, `reranker/model.pt`, `reranker/preprocessor.joblib`), and metrics
+Models are loaded from, or saved to, the paths in the Configure cell (`candidate_generator/model.pt`,
+`reranker/model.pt`, `reranker/preprocessor.joblib`; locally under
+`5_03_Pipeline_Evaluation/artifacts/attention_reranker_niche/`), and metrics
 under `results/pipeline_attention_reranker_niche_generated_<split>_<impressions>.csv` with a
 metadata JSON.
 

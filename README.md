@@ -6,8 +6,8 @@
 |---|---|
 | `1.MIND_split/` | Shortcut to the MIND-small `train/`, `validation/` and `test/` splits produced by [stage 1](1_Data_Preparation/README.md) |
 | `2.Feature_Engineering/` | The prepared model-ready data as zips: `processed.zip` (stage 1), `representations.zip` (stage 3), `ranking_features.zip` (stage 4) and `bundle_manifest.json` with their checksums |
-| `3.Model_Artifacts/MSFT_Reranker/` | The trained RR4 attention reranker (`model.pt`, `preprocessor.joblib`) used by the reranker-only evaluation |
-| `3.Model_Artifacts/E2E/` | Checkpoints for the final end-to-end system (`candidate_generator/model.pt`, `reranker/model.pt`, `reranker/preprocessor.joblib`); when empty, notebook 4 trains them |
+| `3.Model_Artifacts/reranker/` | The trained RR4 attention reranker (`model.pt`, `preprocessor.joblib`) loaded by the reranker-only evaluation. If you retrain it there (`TRAIN_RERANKER = True`), the new model goes to `3.Model_Artifacts/Train_Reranker/` |
+| `3.Model_Artifacts/E2E/` | Checkpoints for the final end-to-end system (`candidate_generator/model.pt`, `reranker/model.pt`, `reranker/preprocessor.joblib`), loaded by notebook 4. Models it retrains go to `3.Model_Artifacts/Train_CG/` and `3.Model_Artifacts/Train_E2E_Reranker/` |
 | `4.Code/` | This repository |
 
 This project builds and evaluates a news recommendation pipeline using **MIND-small**. We have already prepared the data, article and user representations, and ranking features, so you can start with the models in stage 5.
@@ -20,9 +20,9 @@ The `submission` folder holds the code **and** the prepared data, so nothing has
 2. Open each notebook below from `submission/4.Code` with **Open with > Google Colaboratory**. For notebooks 1 and 4, choose **Runtime > Change runtime type > T4 GPU**.
 3. Run each one with **Runtime > Run all**, in this order. The notebooks detect Colab and find the folders automatically, so no paths need editing.
 
-On the first run, a notebook unpacks the zips in `2.Feature_Engineering` into `4.Code` (a few minutes); later runs reuse them. Notebooks 1 and 4 copy the checkpoints in `3.Model_Artifacts` into their model folder before deciding whether to train, so the submitted files are never overwritten.
+On the first run, a notebook unpacks the zips in `2.Feature_Engineering` into `4.Code` (a few minutes); later runs reuse them. Notebook 1 loads the trained reranker from `3.Model_Artifacts/reranker` and stops in its first cells if it is missing; it trains only when `TRAIN_RERANKER = True`. Notebook 4 does the same for its candidate generator and reranker in `3.Model_Artifacts/E2E` (`TRAIN_CANDIDATE_GENERATOR` / `TRAIN_RERANKER`). The submitted files are never overwritten.
 
-Each notebook has one **Configure** cell at the top (section 0), and it is the only cell meant to be edited. It sets where to run (`RUN_ENV`: `"auto"`, `"colab"` or `"local"`), the project folder, the data path (`COLAB_DATA_PATH` / `LOCAL_DATA_PATH`), the model path (`MODEL_PATH`) and, for notebooks 1 and 4, the submitted checkpoints (`SUBMITTED_MODEL_PATH`). With the defaults, Colab uses `/content/drive/MyDrive/submission/4.Code` for code, data and outputs. By default it also evaluates the test split, trains on the whole training set and evaluates every test impression. Setting `TRAIN_IMPRESSIONS` or `EVAL_IMPRESSIONS` to a number such as `5_000` gives a quicker run on a sample. `REUSE_SAVED_MODELS = True` loads a model saved by an earlier run when its settings match.
+Each notebook has one **Configure** cell at the top (section 0), and it is the only cell meant to be edited. It sets where to run (`RUN_ENV`: `"auto"`, `"colab"` or `"local"`), the project folder, the data path (`COLAB_DATA_PATH` / `LOCAL_DATA_PATH`), the model paths (notebook 1: `TRAIN_RERANKER` with its load and save paths; notebook 4: `TRAIN_CANDIDATE_GENERATOR` and `TRAIN_RERANKER` with their load and save paths). With the defaults, Colab uses `/content/drive/MyDrive/submission/4.Code` for code, data and outputs. By default it also evaluates the test split and every test impression; notebooks 1 and 4 load the submitted models instead of training. Setting `TRAIN_IMPRESSIONS` or `EVAL_IMPRESSIONS` to a number such as `5_000` gives a quicker run on a sample.
 
 | # | Notebook | Purpose |
 |---|---|---|
