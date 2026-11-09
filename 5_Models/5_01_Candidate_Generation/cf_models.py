@@ -182,8 +182,12 @@ def matrix_from_pairs(pairs, n_users, n_items):
     return matrix
 
 
-def build_interaction_matrix(root, ctx, *, rebuild=False):
-    output = Path(root) / "5_Models" / "5_01_Candidate_Generation" / "artifacts" / "cf"
+def build_interaction_matrix(root, ctx, *, rebuild=False, output_dir=None):
+    output = (
+        Path(output_dir)
+        if output_dir
+        else Path(root) / "5_Models" / "5_01_Candidate_Generation" / "artifacts" / "cf"
+    )
     output.mkdir(parents=True, exist_ok=True)
     matrix_path = output / "user_item_train.npz"
     manifest_path = output / "matrix_manifest.json"
